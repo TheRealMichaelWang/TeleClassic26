@@ -39,6 +39,8 @@ typedef struct {
 } tc_thread_pool_t;
 
 // Initialize the thread pool
+// - return: TRUE if the thread pool was initialized, FALSE otherwise
+// - reserved_threads: number of threads to reserve for other purposes outside of the thread pool
 pboolean tc_thread_pool_init(tc_thread_pool_t *pool, psize reserved_threads);
 
 // Finalize the thread pool

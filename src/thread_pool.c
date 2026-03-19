@@ -102,6 +102,7 @@ static void* thread_pool_worker(void *arg) {
     return NULL;
 }
 
+// initialize the thread pool
 pboolean tc_thread_pool_init(tc_thread_pool_t *pool, psize reserved_threads) {
     pint num_threads = p_uthread_ideal_count();
     if (reserved_threads >= num_threads) {
@@ -140,6 +141,7 @@ void tc_thread_pool_finalize(tc_thread_pool_t *pool) {
     p_cond_variable_free(pool->not_empty);
 }
 
+// add a task to the thread pool
 pboolean tc_thread_pool_add_task(
     tc_thread_pool_t *pool, 
     tc_thread_pool_task_func_t func, 
