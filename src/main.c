@@ -1,12 +1,12 @@
-#include <stdio.h>
-#include <stdlib.h>
+#include <plibsys.h>
 #include <TeleClassic26/version.h>
+#include <TeleClassic26/thread_pool.h>
 
 int main(void)
 {
-    printf("Hello, TeleClassic26! v%d.%d.%d\n",
-           TELECLASSIC26_VERSION_MAJOR,
-           TELECLASSIC26_VERSION_MINOR,
-           TELECLASSIC26_VERSION_PATCH);
-    return EXIT_SUCCESS;
+    p_libsys_init();
+
+    p_libsys_shutdown();
+
+    return 0;
 }
