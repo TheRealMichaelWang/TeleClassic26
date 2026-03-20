@@ -3,6 +3,7 @@ build/
 out/
 cmake-build-*/
 *.dir/
+.cache
 
 # CMake
 CMakeCache.txt

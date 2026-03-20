@@ -65,6 +65,7 @@ static tc_thread_pool_task_t task_buffer_dequeue(tc_thread_pool_task_buf_t *task
     return task;
 }
 
+// dequeue a task from the thread pool; searches from highest priority to lowest 
 static tc_thread_pool_task_t task_pool_dequeue(tc_thread_pool_t *pool) {
     for (pint i = 0; i < 3; i++) {
         if (!task_buffer_is_empty(&pool->task_prio_buffer[i])) {
@@ -127,10 +128,6 @@ pboolean tc_thread_pool_init(tc_thread_pool_t *pool, psize reserved_threads) {
 
 // finalize the thread pool
 void tc_thread_pool_finalize(tc_thread_pool_t *pool) {
-    pool->shutdown = TRUE;
-    // signal all worker threads that the thread pool is shutting down
-    p_cond_variable_broadcast(pool->not_empty); 
-
     // wait for all worker threads to finish
     for (pint i = 0; i < pool->num_threads; i++) {
         // wait for worker thread i to finish
@@ -139,6 +136,16 @@ void tc_thread_pool_finalize(tc_thread_pool_t *pool) {
 
     p_mutex_free(pool->lock);
     p_cond_variable_free(pool->not_empty);
+}
+
+void tc_thread_pool_stop(tc_thread_pool_t *pool) {
+    p_mutex_lock(pool->lock);
+
+    pool->shutdown = TRUE;
+    // signal all worker threads that the thread pool is shutting down
+    p_cond_variable_broadcast(pool->not_empty); 
+
+    p_mutex_unlock(pool->lock);
 }
 
 // add a task to the thread pool

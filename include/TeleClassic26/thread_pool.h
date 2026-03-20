@@ -10,9 +10,9 @@
 typedef void (*tc_thread_pool_task_func_t)(void *arg);
 
 typedef enum {
-    TC_THREAD_POOL_TASK_PRIORITY_LOW = 0,
+    TC_THREAD_POOL_TASK_PRIORITY_HIGH = 0,
     TC_THREAD_POOL_TASK_PRIORITY_MEDIUM = 1,
-    TC_THREAD_POOL_TASK_PRIORITY_HIGH = 2,
+    TC_THREAD_POOL_TASK_PRIORITY_LOW = 2
 } tc_thread_pool_task_priority_t;
 
 typedef struct {
@@ -35,6 +35,7 @@ typedef struct {
 
     PMutex *lock;
     PCondVariable *not_empty;
+
     pboolean shutdown;
 } tc_thread_pool_t;
 
@@ -44,9 +45,16 @@ typedef struct {
 pboolean tc_thread_pool_init(tc_thread_pool_t *pool, psize reserved_threads);
 
 // Finalize the thread pool
-// - CANNOT BE INVOKED FROM A THREAD WITHIN THE POOL
+// - waits for the thread pool to be stopped
+// - CANNOT BE INVOKED FROM A WORKER THREAD
 // - SHOULD BE OBVIOUS BUT POOL CANNOT BE SUBSEQUENTLY USED AFTER FINALIZATION
 void tc_thread_pool_finalize(tc_thread_pool_t *pool);
+
+// Stop the thread pool
+// - sets the shutdown flag to TRUE
+// - signals all worker threads that the thread pool is shutting down
+// - CAN BE INVOKED FROM ANY THREAD including in worker threads
+void tc_thread_pool_stop(tc_thread_pool_t *pool);
 
 // Add a task to the thread pool
 // - return: TRUE if the task was added, FALSE otherwise
