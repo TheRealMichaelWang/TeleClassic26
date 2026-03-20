@@ -35,7 +35,8 @@ typedef struct {
 
     PMutex *lock;
     PCondVariable *not_empty;
-
+    
+    pint active_threads;
     pboolean shutdown;
 } tc_thread_pool_t;
 
@@ -60,11 +61,13 @@ void tc_thread_pool_stop(tc_thread_pool_t *pool);
 // - return: TRUE if the task was added, FALSE otherwise
 // - func: function to execute
 // - arg: argument to pass to the function
+// - shutdown_task: executed when pool is shutting down; you may pass NULL to nop
 // - priority: priority of the task
 pboolean tc_thread_pool_add_task(
     tc_thread_pool_t *pool, 
     tc_thread_pool_task_func_t func, 
     void *arg, 
+    tc_thread_pool_task_func_t shutdown_task,
     tc_thread_pool_task_priority_t priority,
     pboolean is_yield
 );

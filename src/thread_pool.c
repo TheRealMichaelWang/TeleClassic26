@@ -1,5 +1,6 @@
 #include "plibsys.h"
 #include <TeleClassic26/thread_pool.h>
+#include <string.h>
 
 // initialize a task buffer
 static void init_task_buffer(tc_thread_pool_task_buf_t *task_buf) {
@@ -41,7 +42,7 @@ static pboolean task_buffer_enqueue(
 ) {
     psize remaining_capacity = task_buffer_remaining_capacity(task_buf);
     // we reserve pool->num_threads tasks in each thread buffer for yeild continuations
-    if (!is_yield && remaining_capacity >= pool->num_threads) { 
+    if (!is_yield && remaining_capacity <= pool->num_threads) { 
         return FALSE; // only yeild continuations are allowed to schedule new tasks
     }
 
@@ -78,29 +79,33 @@ static tc_thread_pool_task_t task_pool_dequeue(tc_thread_pool_t *pool) {
 static void* thread_pool_worker(void *arg) {
     tc_thread_pool_t *pool = (tc_thread_pool_t *)arg;
     
+    p_mutex_lock(pool->lock);
     while (TRUE) {
-        p_mutex_lock(pool->lock);
-
-        // wait for a task to be available or shutdown order
-        while (!pool->shutdown && !thread_pool_has_tasks(pool)) {
+        // wait for a task to be available 
+        while (!thread_pool_has_tasks(pool)) {
+            if (pool->shutdown && pool->active_threads == 0) {
+                p_cond_variable_broadcast(pool->not_empty);
+                p_mutex_unlock(pool->lock);
+                return NULL;
+            }
             p_cond_variable_wait(pool->not_empty, pool->lock);
-        }
-
-        if (pool->shutdown) { //execute shutdown order
-            p_mutex_unlock(pool->lock);
-            break;
         }
 
         // dequeue a task from the thread pool
         tc_thread_pool_task_t task = task_pool_dequeue(pool);
 
+        pool->active_threads++;
         p_mutex_unlock(pool->lock);
 
         // execute the task
         task.func(task.arg);
-    }
 
-    return NULL;
+        p_mutex_lock(pool->lock);
+        pool->active_threads--;
+        if (pool->shutdown && pool->active_threads == 0 && !thread_pool_has_tasks(pool)) {
+            p_cond_variable_broadcast(pool->not_empty);
+        }
+    }
 }
 
 // initialize the thread pool
@@ -118,9 +123,18 @@ pboolean tc_thread_pool_init(tc_thread_pool_t *pool, psize reserved_threads) {
     pool->lock = p_mutex_new();
     pool->not_empty = p_cond_variable_new();
     pool->shutdown = FALSE;
+    pool->active_threads = 0;
 
+    for (int i = 0; i < 3; i++) {
+        init_task_buffer(&pool->task_prio_buffer[i]);
+    }
     for (pint i = 0; i < num_threads; i++) {
-        pool->thread_buffer[i] = p_uthread_create(thread_pool_worker, pool, TRUE, "Thread Pool Worker");
+        pool->thread_buffer[i] = p_uthread_create(
+            thread_pool_worker, 
+            pool, 
+            TRUE, 
+            "TC26 Thread Pool Worker"
+        );
     }
 
     return TRUE;
@@ -132,6 +146,7 @@ void tc_thread_pool_finalize(tc_thread_pool_t *pool) {
     for (pint i = 0; i < pool->num_threads; i++) {
         // wait for worker thread i to finish
         p_uthread_join(pool->thread_buffer[i]); 
+        p_uthread_unref(pool->thread_buffer[i]);
     }
 
     p_mutex_free(pool->lock);
@@ -153,19 +168,33 @@ pboolean tc_thread_pool_add_task(
     tc_thread_pool_t *pool, 
     tc_thread_pool_task_func_t func, 
     void *arg, 
+    tc_thread_pool_task_func_t shutdown_task,
     tc_thread_pool_task_priority_t priority,
     pboolean is_yield
 ) {
-    tc_thread_pool_task_t task = {.func = func, .arg = arg, .priority = priority};
-
     p_mutex_lock(pool->lock);
+    
+    tc_thread_pool_task_t task = {
+        .func = pool->shutdown ? shutdown_task : func, 
+        .arg = arg, 
+        .priority = priority
+    };
+
+    if (task.func == NULL) {
+        p_mutex_unlock(pool->lock);
+        return TRUE; // no task to execute
+    }
 
     // enqueue the task in the appropriate priority buffer
     pboolean success = task_buffer_enqueue(pool, &pool->task_prio_buffer[priority], &task, is_yield);
-    
+    if (!success) {
+        p_mutex_unlock(pool->lock);
+        return FALSE;
+    }
+
     // signal worker threads that there is a task to process
     p_cond_variable_signal(pool->not_empty);
 
     p_mutex_unlock(pool->lock);
-    return success;
+    return TRUE;
 }
