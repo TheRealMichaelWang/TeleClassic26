@@ -1,7 +1,7 @@
 #include <plibsys.h>
 #include <TeleClassic26/networking/protocol.h>
 
-static pboolean send_opcode(PSocket* socket, const pchar opcode) {
+static pboolean send_byte(PSocket* socket, const pchar opcode) {
     PError *error = NULL;
     pssize sent = p_socket_send(socket, &opcode, 1, &error);
     if (sent > 0) {
@@ -56,8 +56,27 @@ const tc_thread_pool_task_func_t tc_protocol_packet_handlers[TC_PROTOCOL_TOTAL_P
     [0x00] = NULL, // not implemented
 };
 
+pboolean tc_protocol_server_identification(PSocket* session, const pchar server_name[], const pchar motd[], pchar user_type) {
+    if (!send_byte(session, 0x00)) {
+        return FALSE;
+    }
+    if (!send_byte(session, TC_PROTOCOL_VERSION)) {
+        return FALSE;
+    }
+    if (!send_string(session, server_name)) {
+        return FALSE;
+    }
+    if (!send_string(session, motd)) {
+        return FALSE;
+    }
+    if (!send_byte(session, user_type)) {
+        return FALSE;
+    }
+    return TRUE;
+}
+
 pboolean tc_protocol_kick(PSocket* session, const pchar msg[]) {
-    if (!send_opcode(session, 0x0e)) {
+    if (!send_byte(session, 0x0e)) {
         return FALSE;
     }
     if (!send_string(session, msg)) {
