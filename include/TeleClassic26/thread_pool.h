@@ -8,22 +8,22 @@
 #define TC_THREADS_MAX_THREADS 16
 #define TC_THREAD_POOL_MAX_PRIORITY 3
 
-typedef void (*tc_thread_pool_task_func_t)(void *arg);
+typedef void (*tc_thread_pool_task_t)(void *arg);
 
-typedef enum {
+typedef enum tc_thread_pool_task_priority {
     TC_THREAD_POOL_TASK_PRIORITY_HIGH = 0,
     TC_THREAD_POOL_TASK_PRIORITY_MEDIUM = 1,
     TC_THREAD_POOL_TASK_PRIORITY_LOW = 2
 } tc_thread_pool_task_priority_t;
 
-typedef struct {
+typedef struct tc_thread_pool_context {
     tc_thread_pool_task_priority_t priority;
-    tc_thread_pool_task_func_t func;
+    tc_thread_pool_task_t func;
     void *arg;
-} tc_thread_pool_task_t;
+} tc_thread_pool_context_t;
 
 typedef struct {
-    tc_thread_pool_task_t buffer[TC_THREADS_MAX_BUFFER_SIZE];
+    tc_thread_pool_context_t buffer[TC_THREADS_MAX_BUFFER_SIZE];
     psize head_index;
     psize tail_index;
 } tc_thread_pool_task_buf_t;
@@ -58,21 +58,32 @@ void tc_thread_pool_finalize(tc_thread_pool_t *pool);
 // - CAN BE INVOKED FROM ANY THREAD including in worker threads
 void tc_thread_pool_stop(tc_thread_pool_t *pool);
 
-// Add a task to the thread pool
-// - return: TRUE if the task was added, FALSE otherwise
+// Schedule a new task to the thread pool
+// - return: TRUE if the task was scheduled, FALSE otherwise
 // - func: function to execute
 // - arg: argument to pass to the function
+// - priority: priority of the task
+// NOTE: use this to start a new task chain
+pboolean tc_thread_schedule_new(
+    tc_thread_pool_t *pool,
+    tc_thread_pool_task_t new_task,
+    void *arg,
+    tc_thread_pool_task_priority_t priority
+);
+
+// Schedule a next task to the thread pool
+// - return: TRUE if the task was scheduled, FALSE otherwise
+// - next_task: function to execute
 // - shutdown_task: executed when pool is shutting down; you may pass NULL to nop
 // - priority: priority of the task
-// - is_yield: if scheduling the next task in a task chain. allows other tasks to be executed.
-// - NOTE: if is_yield is TRUE, the task priority must be the same as the priority of the calling task!
-pboolean tc_thread_pool_add_task(
-    tc_thread_pool_t *pool, 
-    tc_thread_pool_task_func_t func, 
-    void *arg, 
-    tc_thread_pool_task_func_t shutdown_task,
-    tc_thread_pool_task_priority_t priority,
-    pboolean is_yield
+// NOTE: use this to schedule the next task in a task chain
+// NOTE: priority must be the same as the priority of the calling task!
+void tc_thread_schedule_next(
+    tc_thread_pool_t *pool,
+    tc_thread_pool_task_t next_task,
+    tc_thread_pool_task_t shutdown_task,
+    void *arg,
+    tc_thread_pool_task_priority_t priority
 );
 
 #endif /* MICHAEL_THREADS_THREAD_POOL_H */

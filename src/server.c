@@ -151,14 +151,13 @@ static void client_listen_worker(void *arg) {
 
             // buffer is full, process the packet
             if (session->pending_packet_buffer_size == packet_buffer_size) {
-                tc_thread_pool_task_func_t handler = tc_protocol_packet_handlers[session->pending_packet_opcode];
-                tc_thread_pool_add_task(
+                tc_thread_pool_task_t handler = tc_protocol_packet_handlers[session->pending_packet_opcode];
+                tc_thread_schedule_next(
                     &session->server->thread_pool,
                     handler,
+                    shutdown_server_kick,
                     session,
-                    NULL,
-                    TC_THREAD_POOL_TASK_PRIORITY_MEDIUM,
-                    FALSE
+                    TC_THREAD_POOL_TASK_PRIORITY_MEDIUM
                 );
             }
         }
@@ -170,13 +169,12 @@ static void client_listen_worker(void *arg) {
     }
     // if no data was read and the socket is not blocking, yeild
     if (error && p_error_get_code(error) == P_ERROR_IO_WOULD_BLOCK) {
-        tc_thread_pool_add_task(
+        tc_thread_schedule_next(
             &session->server->thread_pool,
             client_listen_worker,
-            session,
             shutdown_server_kick,
-            TC_THREAD_POOL_TASK_PRIORITY_MEDIUM,
-            TRUE
+            session,
+            TC_THREAD_POOL_TASK_PRIORITY_MEDIUM
         );
         p_error_free(error);
         return;
@@ -215,16 +213,13 @@ static void handle_new_session(tc_server_t* server, PSocket* client_socket) {
     session->pending_packet_buffer = NULL;
     session->pending_packet_buffer_size = 0;
 
-    pboolean task_chain_create_success = tc_thread_pool_add_task(
+    pboolean schedule_success = tc_thread_schedule_new(
         &server->thread_pool,
         client_listen_worker,
         session,
-        shutdown_server_kick,
-        TC_THREAD_POOL_TASK_PRIORITY_MEDIUM,
-        FALSE
+        TC_THREAD_POOL_TASK_PRIORITY_MEDIUM
     );
-
-    if (!task_chain_create_success) {
+    if (!schedule_success) {
         kick_session(session, "Server is Busy: Please try again or come back soon.");
     }
 }
@@ -240,14 +235,14 @@ static void listener_worker_thread(void *arg) {
     }
 
     // enque the listener worker again yeilding to other tasks
-    tc_thread_pool_add_task(
+    tc_thread_schedule_next(
         &server->thread_pool,
         listener_worker_thread,
+        shutdown_server_kick,
         server,
-        NULL,
-        TC_THREAD_POOL_TASK_PRIORITY_HIGH,
-        TRUE
+        TC_THREAD_POOL_TASK_PRIORITY_HIGH
     );
+    return;
 }
 
 pboolean tc_server_start(tc_server_t *server) {
@@ -260,15 +255,13 @@ pboolean tc_server_start(tc_server_t *server) {
         return FALSE;
     }
 
-    pboolean task_chain_create_success = tc_thread_pool_add_task(
+    pboolean schedule_success = tc_thread_schedule_new(
         &server->thread_pool,
         listener_worker_thread,
         server,
-        NULL,
-        TC_THREAD_POOL_TASK_PRIORITY_HIGH,
-        FALSE
+        TC_THREAD_POOL_TASK_PRIORITY_HIGH
     );
-    if (!task_chain_create_success) {
+    if (!schedule_success) {
         p_socket_close(server->listener_socket, NULL);
         return FALSE;
     }

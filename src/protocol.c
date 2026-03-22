@@ -52,7 +52,7 @@ const psize tc_protocol_packet_sizes[TC_PROTOCOL_TOTAL_PACKETS] = {
     [0x00] = 131 // player identification packet 
 };
 
-const tc_thread_pool_task_func_t tc_protocol_packet_handlers[TC_PROTOCOL_TOTAL_PACKETS] = { 
+const tc_thread_pool_task_t tc_protocol_packet_handlers[TC_PROTOCOL_TOTAL_PACKETS] = { 
     [0x00] = NULL, // not implemented
 };
 

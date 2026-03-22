@@ -1,6 +1,6 @@
 #include "plibsys.h"
 #include <TeleClassic26/thread_pool.h>
-#include <string.h>
+#include <TeleClassic26/utils.h>
 
 // initialize a task buffer
 static void init_task_buffer(tc_thread_pool_task_buf_t *task_buf) {
@@ -37,7 +37,7 @@ static pboolean thread_pool_has_tasks(tc_thread_pool_t *pool) {
 static pboolean task_buffer_enqueue(
     tc_thread_pool_t *pool,
     tc_thread_pool_task_buf_t *task_buf, 
-    tc_thread_pool_task_t *task, 
+    tc_thread_pool_context_t *task, 
     pboolean is_yield
 ) {
     psize remaining_capacity = task_buffer_remaining_capacity(task_buf);
@@ -56,24 +56,24 @@ static pboolean task_buffer_enqueue(
 }
 
 // dequeue a task from the thread pool
-// - return: valid tc_thread_pool_task_t if a task was dequeued, an invalid struct otherwise
-static tc_thread_pool_task_t task_buffer_dequeue(tc_thread_pool_task_buf_t *task_buf) {
+// - return: valid tc_thread_pool_context_t if a task was dequeued, an invalid struct otherwise
+static tc_thread_pool_context_t task_buffer_dequeue(tc_thread_pool_task_buf_t *task_buf) {
     if (task_buf->head_index == task_buf->tail_index) {
-        return (tc_thread_pool_task_t){.func = NULL, .arg = NULL, .priority = TC_THREAD_POOL_TASK_PRIORITY_LOW};
+        return (tc_thread_pool_context_t){.func = NULL, .arg = NULL, .priority = TC_THREAD_POOL_TASK_PRIORITY_LOW};
     }
-    tc_thread_pool_task_t task = task_buf->buffer[task_buf->tail_index];
+    tc_thread_pool_context_t task = task_buf->buffer[task_buf->tail_index];
     task_buf->tail_index = (task_buf->tail_index + 1) % TC_THREADS_MAX_BUFFER_SIZE;
     return task;
 }
 
 // dequeue a task from the thread pool; searches from highest priority to lowest 
-static tc_thread_pool_task_t task_pool_dequeue(tc_thread_pool_t *pool) {
+static tc_thread_pool_context_t task_pool_dequeue(tc_thread_pool_t *pool) {
     for (pint i = 0; i < TC_THREAD_POOL_MAX_PRIORITY; i++) {
         if (!task_buffer_is_empty(&pool->task_prio_buffer[i])) {
             return task_buffer_dequeue(&pool->task_prio_buffer[i]);
         }
     }
-    return (tc_thread_pool_task_t){.func = NULL, .arg = NULL, .priority = TC_THREAD_POOL_TASK_PRIORITY_LOW};
+    return (tc_thread_pool_context_t){.func = NULL, .arg = NULL, .priority = TC_THREAD_POOL_TASK_PRIORITY_LOW};
 }
 
 static void* thread_pool_worker(void *arg) {
@@ -92,7 +92,7 @@ static void* thread_pool_worker(void *arg) {
         }
 
         // dequeue a task from the thread pool
-        tc_thread_pool_task_t task = task_pool_dequeue(pool);
+        tc_thread_pool_context_t task = task_pool_dequeue(pool);
 
         pool->active_threads++;
         p_mutex_unlock(pool->lock);
@@ -163,38 +163,66 @@ void tc_thread_pool_stop(tc_thread_pool_t *pool) {
     p_mutex_unlock(pool->lock);
 }
 
-// add a task to the thread pool
-pboolean tc_thread_pool_add_task(
-    tc_thread_pool_t *pool, 
-    tc_thread_pool_task_func_t func, 
-    void *arg, 
-    tc_thread_pool_task_func_t shutdown_task,
-    tc_thread_pool_task_priority_t priority,
-    pboolean is_yield
+// Schedule a new task to the thread pool
+pboolean tc_thread_schedule_new(
+    tc_thread_pool_t *pool,
+    tc_thread_pool_task_t new_task,
+    void *arg,
+    tc_thread_pool_task_priority_t priority
 ) {
     p_mutex_lock(pool->lock);
-    
-    tc_thread_pool_task_t task = {
-        .func = pool->shutdown ? shutdown_task : func, 
+
+    tc_thread_pool_context_t task = {
+        .func = new_task,
+        .arg = arg,
+        .priority = priority
+    };
+
+    pboolean enqueue_success = task_buffer_enqueue(
+        pool, 
+        &pool->task_prio_buffer[priority], 
+        &task, 
+        FALSE
+    );
+    if (!enqueue_success) {
+        p_mutex_unlock(pool->lock);
+        return FALSE;
+    }
+
+    p_cond_variable_signal(pool->not_empty);
+    p_mutex_unlock(pool->lock);
+    return TRUE;
+}
+
+// Schedule a next task to the thread pool
+void tc_thread_schedule_next(
+    tc_thread_pool_t *pool,
+    tc_thread_pool_task_t next_task,
+    tc_thread_pool_task_t shutdown_task,
+    void *arg,
+    tc_thread_pool_task_priority_t priority
+) {
+    p_mutex_lock(pool->lock);
+
+    tc_thread_pool_context_t task = {
+        .func = pool->shutdown ? shutdown_task : next_task, 
         .arg = arg, 
         .priority = priority
     };
 
     if (task.func == NULL) {
         p_mutex_unlock(pool->lock);
-        return TRUE; // no task to execute
+        return;
     }
 
-    // enqueue the task in the appropriate priority buffer
-    pboolean success = task_buffer_enqueue(pool, &pool->task_prio_buffer[priority], &task, is_yield);
-    if (!success) {
-        p_mutex_unlock(pool->lock);
-        return FALSE;
-    }
+    pboolean enqueue_success = task_buffer_enqueue(
+        pool, 
+        &pool->task_prio_buffer[priority], 
+        &task, 
+        FALSE
+    );
+    TC_ASSERT(enqueue_success, "Failed to enqueue next task in task chain");
 
-    // signal worker threads that there is a task to process
     p_cond_variable_signal(pool->not_empty);
-
     p_mutex_unlock(pool->lock);
-    return TRUE;
 }
