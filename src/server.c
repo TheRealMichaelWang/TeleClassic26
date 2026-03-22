@@ -1,6 +1,6 @@
 #include "TeleClassic26/protocol.h"
 #include "TeleClassic26/thread_pool.h"
-#include "plibsys.h"
+#include <plibsys.h>
 #include <TeleClassic26/server.h>
 
 pboolean tc_server_init(
@@ -73,6 +73,11 @@ static void kick_session(tc_session_t* session, const char* msg) {
         tc_protocol_kick(session->client_socket, msg);
     }
 
+    if (session->pending_packet_buffer) {
+        p_free(session->pending_packet_buffer);
+        session->pending_packet_buffer = NULL;
+    }
+
     p_socket_shutdown(session->client_socket, TRUE, TRUE, NULL);
     p_socket_free(session->client_socket);
     
@@ -94,12 +99,92 @@ static void shutdown_server_kick(void* arg) {
 // - checks whether a 
 static void client_listen_worker(void *arg) {
     tc_session_t *session = (tc_session_t *)arg;
-    // To be implemented later
-}
 
-static void client_negotiatiator(void* arg) {
-    tc_session_t *session = (tc_session_t *)arg;
-    // To be implemented later
+    PError *error = NULL;
+    if (session->pending_packet_opcode != -1) {
+        pchar opcode_buffer[1];
+        psize read_size = p_socket_receive(
+            session->client_socket, 
+            opcode_buffer, 
+            1, 
+            &error
+        );
+
+        if (read_size > 0) {
+            session->pending_packet_opcode = (pint)opcode_buffer[0];
+
+            // validate the packet opcode
+            if (session->pending_packet_opcode < 0 || session->pending_packet_opcode >= TC_PROTOCOL_TOTAL_PACKETS) {
+                p_error_free(error);
+                kick_session(session, "Invalid Packet Opcode: Please reconnect.");
+                return;
+            }
+
+            // allocate the buffer for the packet data
+            psize packet_buffer_size = tc_protocol_packet_sizes[session->pending_packet_opcode];
+            session->pending_packet_buffer = p_malloc(packet_buffer_size);
+            session->pending_packet_buffer_size = 0;
+            if (session->pending_packet_buffer == NULL) {
+                p_error_free(error);
+                kick_session(session, "Out of Memory: Sorry");
+                return;
+            }
+        }
+        else if (read_size == 0) { // client disconnected
+            kick_session(session, "Client Disconnected: Please reconnect.");
+            p_error_free(error);
+            return;
+        }
+    } else {
+        psize packet_buffer_size = tc_protocol_packet_sizes[session->pending_packet_opcode];
+        
+        PError *error = NULL;
+        psize read_size = p_socket_receive(
+            session->client_socket, 
+            &session->pending_packet_buffer[session->pending_packet_buffer_size], 
+            packet_buffer_size - session->pending_packet_buffer_size, 
+            &error
+        );
+        
+        if (read_size > 0) {
+            session->pending_packet_buffer_size += read_size;
+
+            // buffer is full, process the packet
+            if (session->pending_packet_buffer_size == packet_buffer_size) {
+                tc_thread_pool_task_func_t handler = tc_protocol_packet_handlers[session->pending_packet_opcode];
+                tc_thread_pool_add_task(
+                    &session->server->thread_pool,
+                    handler,
+                    session,
+                    NULL,
+                    TC_THREAD_POOL_TASK_PRIORITY_MEDIUM,
+                    FALSE
+                );
+            }
+        }
+        else if (read_size == 0) { // client disconnected
+            p_error_free(error);
+            kick_session(session, "Client Disconnected: Please reconnect.");
+            return;
+        }
+    }
+    // if no data was read and the socket is not blocking, yeild
+    if (error && p_error_get_code(error) == P_ERROR_IO_WOULD_BLOCK) {
+        tc_thread_pool_add_task(
+            &session->server->thread_pool,
+            client_listen_worker,
+            session,
+            shutdown_server_kick,
+            TC_THREAD_POOL_TASK_PRIORITY_MEDIUM,
+            TRUE
+        );
+        p_error_free(error);
+        return;
+    }
+
+    // if an error occurred, kick the session
+    kick_session(session, "Error: Please reconnect.");
+    p_error_free(error);
 }
 
 // handles a new session
@@ -126,13 +211,16 @@ static void handle_new_session(tc_server_t* server, PSocket* client_socket) {
     session->client_socket = client_socket;
     session->id = session_id;
     session->server = server;
+    session->pending_packet_opcode = -1;
+    session->pending_packet_buffer = NULL;
+    session->pending_packet_buffer_size = 0;
 
     pboolean task_chain_create_success = tc_thread_pool_add_task(
         &server->thread_pool,
-        client_negotiatiator,
+        client_listen_worker,
         session,
         shutdown_server_kick,
-        TC_THREAD_POOL_TASK_PRIORITY_HIGH,
+        TC_THREAD_POOL_TASK_PRIORITY_MEDIUM,
         FALSE
     );
 
@@ -147,6 +235,7 @@ static void listener_worker_thread(void *arg) {
 
     PSocket* client_socket = p_socket_accept(server->listener_socket, NULL);
     if (client_socket) {
+        p_socket_set_blocking(client_socket, FALSE);
         handle_new_session(server, client_socket);
     }
 

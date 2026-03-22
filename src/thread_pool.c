@@ -22,7 +22,7 @@ static pboolean task_buffer_is_empty(tc_thread_pool_task_buf_t *task_buf) {
 
 // check if the thread pool has tasks
 static pboolean thread_pool_has_tasks(tc_thread_pool_t *pool) {
-    for (pint i = 0; i < 3; i++) {
+    for (pint i = 0; i < TC_THREAD_POOL_MAX_PRIORITY; i++) {
         if (!task_buffer_is_empty(&pool->task_prio_buffer[i])) {
             return TRUE;
         }
@@ -68,7 +68,7 @@ static tc_thread_pool_task_t task_buffer_dequeue(tc_thread_pool_task_buf_t *task
 
 // dequeue a task from the thread pool; searches from highest priority to lowest 
 static tc_thread_pool_task_t task_pool_dequeue(tc_thread_pool_t *pool) {
-    for (pint i = 0; i < 3; i++) {
+    for (pint i = 0; i < TC_THREAD_POOL_MAX_PRIORITY; i++) {
         if (!task_buffer_is_empty(&pool->task_prio_buffer[i])) {
             return task_buffer_dequeue(&pool->task_prio_buffer[i]);
         }
@@ -125,7 +125,7 @@ pboolean tc_thread_pool_init(tc_thread_pool_t *pool, psize reserved_threads) {
     pool->shutdown = FALSE;
     pool->active_threads = 0;
 
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < TC_THREAD_POOL_MAX_PRIORITY; i++) {
         init_task_buffer(&pool->task_prio_buffer[i]);
     }
     for (pint i = 0; i < num_threads; i++) {

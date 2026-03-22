@@ -14,6 +14,11 @@ typedef struct tc_session {
     pchar username[TC_PROTOCOL_MAX_STR_LEN];
     PSocket *client_socket;
     tc_server_t *server;
+
+    pint pending_packet_opcode;
+    pchar *pending_packet_buffer;
+    psize pending_packet_buffer_size;
+
     pint id;
 } tc_session_t;
 

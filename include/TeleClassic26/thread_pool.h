@@ -6,6 +6,7 @@
 // Constants that determine the max size of buffers; feel free to modify
 #define TC_THREADS_MAX_BUFFER_SIZE 64 
 #define TC_THREADS_MAX_THREADS 16
+#define TC_THREAD_POOL_MAX_PRIORITY 3
 
 typedef void (*tc_thread_pool_task_func_t)(void *arg);
 
@@ -63,6 +64,8 @@ void tc_thread_pool_stop(tc_thread_pool_t *pool);
 // - arg: argument to pass to the function
 // - shutdown_task: executed when pool is shutting down; you may pass NULL to nop
 // - priority: priority of the task
+// - is_yield: if scheduling the next task in a task chain. allows other tasks to be executed.
+// - NOTE: if is_yield is TRUE, the task priority must be the same as the priority of the calling task!
 pboolean tc_thread_pool_add_task(
     tc_thread_pool_t *pool, 
     tc_thread_pool_task_func_t func, 
