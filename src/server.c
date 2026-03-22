@@ -1,7 +1,7 @@
-#include "TeleClassic26/protocol.h"
+#include <TeleClassic26/networking/protocol.h>
 #include "TeleClassic26/thread_pool.h"
 #include <plibsys.h>
-#include <TeleClassic26/server.h>
+#include <TeleClassic26/networking/server.h>
 
 pboolean tc_server_init(
     tc_server_t *server, 

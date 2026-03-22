@@ -2,8 +2,8 @@
 #define TELECLASSIC26_SERVER_H
 
 #include <plibsys.h>
-#include "thread_pool.h"
-#include "protocol.h"
+#include <TeleClassic26/thread_pool.h>
+#include <TeleClassic26/networking/protocol.h>
 
 #define TC_SERVER_MAX_SESSIONS 128
 

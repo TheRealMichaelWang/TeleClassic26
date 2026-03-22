@@ -4,6 +4,7 @@ out/
 cmake-build-*/
 *.dir/
 .cache
+.clangd
 
 # CMake
 CMakeCache.txt
