@@ -4,6 +4,7 @@
 #include <plibsys.h>
 #include <TeleClassic26/thread_pool.h>
 #include <TeleClassic26/networking/protocol.h>
+#include <TeleClassic26/authentication/heartbeat.h>
 
 #define TC_SERVER_MAX_SESSIONS 128
 #define TC_SERVER_PING_INTERVAL 15000000 //15 seconds in microseconds
@@ -23,6 +24,7 @@ typedef struct tc_session {
     psize pending_packet_buffer_size;
 
     pint id;
+    pboolean authenticated;
 } tc_session_t;
 
 typedef struct tc_server {
@@ -31,6 +33,9 @@ typedef struct tc_server {
     pint id_buffer_head;
 
     tc_thread_pool_t thread_pool;
+    heartbeat_manager_t heartbeat_manager;
+
+    pchar motd[TC_PROTOCOL_MAX_STR_LEN];
 
     PSocketAddress* address;
     PSocket *listener_socket;
@@ -66,6 +71,11 @@ pboolean tc_server_start(tc_server_t *server);
 // - CAN BE INVOKED FROM ANY THREAD
 void tc_server_stop(tc_server_t *server);
 
+// kicks a session from the server and disconnects/disposes of the session
+// - session: the session to kick
+// - msg: the message to send to the session (can be NULL for no kick message)
+void tc_server_kick_session(tc_session_t* session, const char* msg);
+
 // cleans up pending packet buffer and schedules next task in client task chain
 // - session: the session to cleanup
 // - next_task: the next task to schedule; usually should be tc_server_client_listen_worker
@@ -75,11 +85,11 @@ void tc_server_protocol_handler_cleanup(tc_session_t* session, tc_thread_pool_ta
 // Task that kicks a client and disconnects gracefully
 // - arg: pointer to the session to kick
 // NOTE: use as part of client task chain as the shutdown task
-static void tc_server_shutdown_client_task(void* arg);
+void tc_server_shutdown_client_task(void* arg, tc_thread_pool_task_priority_t priority);
 
 // Task that listening for new clients; part of client task chain
 // - arg: pointer to the session to listen for new clients
 // NOTE: use this function to schedule the next task in a task chain
-void tc_server_client_listen_task(void *arg);
+void tc_server_client_listen_task(void *arg, tc_thread_pool_task_priority_t priority);
 
 #endif /* TELECLASSIC26_SERVER_H */

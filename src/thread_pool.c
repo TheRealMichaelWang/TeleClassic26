@@ -98,7 +98,7 @@ static void* thread_pool_worker(void *arg) {
         p_mutex_unlock(pool->lock);
 
         // execute the task
-        task.func(task.arg);
+        task.func(task.arg, task.priority);
 
         p_mutex_lock(pool->lock);
         pool->active_threads--;
@@ -200,14 +200,14 @@ void tc_thread_schedule_next(
     tc_thread_pool_task_t next_task,
     tc_thread_pool_task_t shutdown_task,
     void *arg,
-    tc_thread_pool_task_priority_t priority
+    tc_thread_pool_task_priority_t current_priority
 ) {
     p_mutex_lock(pool->lock);
 
     tc_thread_pool_context_t task = {
         .func = pool->shutdown ? shutdown_task : next_task, 
         .arg = arg, 
-        .priority = priority
+        .priority = current_priority
     };
 
     if (task.func == NULL) {
@@ -217,7 +217,7 @@ void tc_thread_schedule_next(
 
     pboolean enqueue_success = task_buffer_enqueue(
         pool, 
-        &pool->task_prio_buffer[priority], 
+        &pool->task_prio_buffer[current_priority], 
         &task, 
         FALSE
     );

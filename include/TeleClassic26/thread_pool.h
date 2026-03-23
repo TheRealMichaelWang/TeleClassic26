@@ -8,13 +8,13 @@
 #define TC_THREADS_MAX_THREADS 16
 #define TC_THREAD_POOL_MAX_PRIORITY 3
 
-typedef void (*tc_thread_pool_task_t)(void *arg);
-
 typedef enum tc_thread_pool_task_priority {
     TC_THREAD_POOL_TASK_PRIORITY_HIGH = 0,
     TC_THREAD_POOL_TASK_PRIORITY_MEDIUM = 1,
     TC_THREAD_POOL_TASK_PRIORITY_LOW = 2
 } tc_thread_pool_task_priority_t;
+
+typedef void (*tc_thread_pool_task_t)(void *arg, tc_thread_pool_task_priority_t priority);
 
 typedef struct tc_thread_pool_context {
     tc_thread_pool_task_priority_t priority;
@@ -83,7 +83,7 @@ void tc_thread_schedule_next(
     tc_thread_pool_task_t next_task,
     tc_thread_pool_task_t shutdown_task,
     void *arg,
-    tc_thread_pool_task_priority_t priority
+    tc_thread_pool_task_priority_t current_priority
 );
 
 #endif /* MICHAEL_THREADS_THREAD_POOL_H */

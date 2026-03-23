@@ -88,10 +88,7 @@ static void disconnect_session(tc_session_t* session) {
 }
 
 // kicks a session from the server
-// - server: the server to kick the session from
-// - session_id: the id of the session to kick
-// - msg: the message to send to the session (can be NULL for no kick message)
-static void kick_session(tc_session_t* session, const char* msg) {
+void tc_server_kick_session(tc_session_t* session, const char* msg) {
     if (msg) {
         tc_protocol_kick(session->client_socket, msg);
     }
@@ -119,13 +116,13 @@ void tc_server_protocol_handler_cleanup(tc_session_t* session, tc_thread_pool_ta
 // kicks a session from the server because the server is busy
 // Just a wrapper for kick_session with a default message
 // - session: the session to kick
-static void tc_server_shutdown_client_task(void* arg) {
+ void tc_server_shutdown_client_task(void* arg, tc_thread_pool_task_priority_t priority) {
     tc_session_t *session = (tc_session_t *)arg;
-    kick_session(session, "Server is Shutting Down: Please come back later!");
+    tc_server_kick_session(session, "Server is Shutting Down: Please come back later!");
 }
 
 // worker thread for listening for new clients
-void tc_server_client_listen_task(void *arg) {
+void tc_server_client_listen_task(void *arg, tc_thread_pool_task_priority_t priority) {
     tc_session_t *session = (tc_session_t *)arg;
 
     if (p_time_profiler_elapsed_usecs(session->ping_profiler) > TC_SERVER_PING_INTERVAL) {
@@ -152,7 +149,7 @@ void tc_server_client_listen_task(void *arg) {
             // validate the packet opcode
             if (session->pending_packet_opcode < 0 || session->pending_packet_opcode >= TC_PROTOCOL_TOTAL_PACKETS) {
                 p_error_free(error);
-                kick_session(session, "Invalid Packet Opcode: Please reconnect.");
+                tc_server_kick_session(session, "Invalid Packet Opcode: Please reconnect.");
                 return;
             }
 
@@ -162,12 +159,12 @@ void tc_server_client_listen_task(void *arg) {
             session->pending_packet_buffer_size = 0;
             if (session->pending_packet_buffer == NULL) {
                 p_error_free(error);
-                kick_session(session, "Out of Memory: Sorry");
+                tc_server_kick_session(session, "Out of Memory: Sorry");
                 return;
             }
         }
         else if (read_size == 0) { // client disconnected
-            kick_session(session, "Client Disconnected: Please reconnect.");
+            tc_server_kick_session(session, "Client Disconnected: Please reconnect.");
             p_error_free(error);
             return;
         }
@@ -193,14 +190,14 @@ void tc_server_client_listen_task(void *arg) {
                     handler,
                     tc_server_shutdown_client_task,
                     session,
-                    TC_THREAD_POOL_TASK_PRIORITY_HIGH
+                    priority
                 );
                 return;
             }
         }
         else if (read_size == 0) { // client disconnected
             p_error_free(error);
-            kick_session(session, "Client Disconnected: Please reconnect.");
+            tc_server_kick_session(session, "Client Disconnected: Please reconnect.");
             return;
         }
     }
@@ -211,14 +208,14 @@ void tc_server_client_listen_task(void *arg) {
             tc_server_client_listen_task,
             tc_server_shutdown_client_task,
             session,
-            TC_THREAD_POOL_TASK_PRIORITY_HIGH
+            priority
         );
         p_error_free(error);
         return;
     }
 
     // if an error occurred, kick the session
-    kick_session(session, "Error: Please reconnect.");
+    tc_server_kick_session(session, "Error: Please reconnect.");
     p_error_free(error);
 }
 
@@ -249,10 +246,11 @@ static void handle_new_session(tc_server_t* server, PSocket* client_socket) {
     session->pending_packet_opcode = -1;
     session->pending_packet_buffer = NULL;
     session->pending_packet_buffer_size = 0;
+    session->authenticated = FALSE;
 
     session->ping_profiler = p_time_profiler_new();
     if (!session->ping_profiler) {
-        kick_session(session, "Out of Memory: Sorry");
+        tc_server_kick_session(session, "Out of Memory: Sorry");
         return;
     }
 
@@ -260,15 +258,15 @@ static void handle_new_session(tc_server_t* server, PSocket* client_socket) {
         &server->thread_pool,
         tc_server_client_listen_task,
         session,
-        TC_THREAD_POOL_TASK_PRIORITY_HIGH
+        TC_THREAD_POOL_TASK_PRIORITY_LOW
     );
     if (!schedule_success) {
-        kick_session(session, "Server is Busy: Please try again or come back soon.");
+        tc_server_kick_session(session, "Server is Busy: Please try again or come back soon.");
     }
 }
 
 // Main task chain for listining/accepting new clients
-static void listener_worker_task(void *arg) {
+static void listener_worker_task(void *arg, tc_thread_pool_task_priority_t priority) {
     tc_server_t *server = (tc_server_t *)arg;
 
     PSocket* client_socket = p_socket_accept(server->listener_socket, NULL);
@@ -283,7 +281,7 @@ static void listener_worker_task(void *arg) {
         listener_worker_task,
         tc_server_shutdown_client_task,
         server,
-        TC_THREAD_POOL_TASK_PRIORITY_HIGH
+        priority
     );
     return;
 }
