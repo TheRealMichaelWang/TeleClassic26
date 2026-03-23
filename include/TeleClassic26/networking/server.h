@@ -54,8 +54,18 @@ pboolean tc_server_init(
 // - stops the server if it is started in addition to finalizing stuff
 void tc_server_finalize(tc_server_t *server);
 
+// Start the server
+// - return: TRUE if the server was started, FALSE otherwise
 pboolean tc_server_start(tc_server_t *server);
+
+// Stop the server
+// - stops the server if it is started
+// - CAN BE INVOKED FROM ANY THREAD
 void tc_server_stop(tc_server_t *server);
 
+// Worker thread for listening for new clients
+// - arg: pointer to the session to listen for new clients
+// NOTE: use this function to schedule the next task in a task chain
+void tc_server_client_listen_worker(void *arg);
 
 #endif /* TELECLASSIC26_SERVER_H */

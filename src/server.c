@@ -96,8 +96,7 @@ static void shutdown_server_kick(void* arg) {
 }
 
 // worker thread for listening for new clients
-// - checks whether a 
-static void client_listen_worker(void *arg) {
+void tc_server_client_listen_worker(void *arg) {
     tc_session_t *session = (tc_session_t *)arg;
 
     PError *error = NULL;
@@ -152,13 +151,11 @@ static void client_listen_worker(void *arg) {
             // buffer is full, process the packet
             if (session->pending_packet_buffer_size == packet_buffer_size) {
                 tc_thread_pool_task_t handler = tc_protocol_packet_handlers[session->pending_packet_opcode];
-                tc_thread_schedule_next(
-                    &session->server->thread_pool,
-                    handler,
-                    shutdown_server_kick,
-                    session,
-                    TC_THREAD_POOL_TASK_PRIORITY_MEDIUM
-                );
+                handler(session);
+                p_free(session->pending_packet_buffer);
+                session->pending_packet_opcode = -1;
+                session->pending_packet_buffer = NULL;
+                session->pending_packet_buffer_size = 0;
             }
         }
         else if (read_size == 0) { // client disconnected
@@ -171,10 +168,10 @@ static void client_listen_worker(void *arg) {
     if (error && p_error_get_code(error) == P_ERROR_IO_WOULD_BLOCK) {
         tc_thread_schedule_next(
             &session->server->thread_pool,
-            client_listen_worker,
+            tc_server_client_listen_worker,
             shutdown_server_kick,
             session,
-            TC_THREAD_POOL_TASK_PRIORITY_MEDIUM
+            TC_THREAD_POOL_TASK_PRIORITY_HIGH
         );
         p_error_free(error);
         return;
@@ -215,9 +212,9 @@ static void handle_new_session(tc_server_t* server, PSocket* client_socket) {
 
     pboolean schedule_success = tc_thread_schedule_new(
         &server->thread_pool,
-        client_listen_worker,
+        tc_server_client_listen_worker,
         session,
-        TC_THREAD_POOL_TASK_PRIORITY_MEDIUM
+        TC_THREAD_POOL_TASK_PRIORITY_HIGH
     );
     if (!schedule_success) {
         kick_session(session, "Server is Busy: Please try again or come back soon.");
