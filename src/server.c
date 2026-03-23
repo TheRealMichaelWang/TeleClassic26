@@ -62,24 +62,19 @@ void tc_server_finalize(tc_server_t *server) {
     p_mutex_free(server->lock);
 }
 
-// kicks a session from the server
-// - server: the server to kick the session from
-// - session_id: the id of the session to kick
-// - msg: the message to send to the session (can be NULL for no kick message)
-static void kick_session(tc_session_t* session, const char* msg) {
-    p_mutex_lock(session->server->lock);
-
-    if (msg) {
-        tc_protocol_kick(session->client_socket, msg);
-    }
-
+static void disconnect_session(tc_session_t* session) {
+    // free the pending packet buffer
     if (session->pending_packet_buffer) {
         p_free(session->pending_packet_buffer);
         session->pending_packet_buffer = NULL;
     }
 
+    // shutdown and free the client socket
     p_socket_shutdown(session->client_socket, TRUE, TRUE, NULL);
     p_socket_free(session->client_socket);
+    
+    // add the session id back to the id buffer
+    p_mutex_lock(session->server->lock);
     
     session->server->id_buffer_head--;
     session->server->id_buffer[session->server->id_buffer_head] = session->id;
@@ -87,17 +82,51 @@ static void kick_session(tc_session_t* session, const char* msg) {
     p_mutex_unlock(session->server->lock);
 }
 
+// kicks a session from the server
+// - server: the server to kick the session from
+// - session_id: the id of the session to kick
+// - msg: the message to send to the session (can be NULL for no kick message)
+static void kick_session(tc_session_t* session, const char* msg) {
+    if (msg) {
+        tc_protocol_kick(session->client_socket, msg);
+    }
+    disconnect_session(session);
+}
+
+// cleans up pending packet buffer and schedules next task in client task chain
+void tc_server_protocol_handler_cleanup(tc_session_t* session, tc_thread_pool_task_t next_task) {
+    p_free(session->pending_packet_buffer);
+    session->pending_packet_opcode = -1;
+    session->pending_packet_buffer = NULL;
+    session->pending_packet_buffer_size = 0;
+
+    if (next_task) {
+        tc_thread_schedule_next(
+            &session->server->thread_pool,
+            next_task,
+            tc_server_shutdown_client_task,
+            session,
+            TC_THREAD_POOL_TASK_PRIORITY_HIGH
+        );
+    }
+}
+
 // kicks a session from the server because the server is busy
 // Just a wrapper for kick_session with a default message
 // - session: the session to kick
-static void shutdown_server_kick(void* arg) {
+static void tc_server_shutdown_client_task(void* arg) {
     tc_session_t *session = (tc_session_t *)arg;
     kick_session(session, "Server is Shutting Down: Please come back later!");
 }
 
 // worker thread for listening for new clients
-void tc_server_client_listen_worker(void *arg) {
+void tc_server_client_listen_task(void *arg) {
     tc_session_t *session = (tc_session_t *)arg;
+
+    if (!tc_protocol_ping(session->client_socket)) {
+        disconnect_session(session);
+        return;
+    }
 
     PError *error = NULL;
     if (session->pending_packet_opcode != -1) {
@@ -136,7 +165,7 @@ void tc_server_client_listen_worker(void *arg) {
         }
     } else {
         psize packet_buffer_size = tc_protocol_packet_sizes[session->pending_packet_opcode];
-        
+
         PError *error = NULL;
         psize read_size = p_socket_receive(
             session->client_socket, 
@@ -151,11 +180,14 @@ void tc_server_client_listen_worker(void *arg) {
             // buffer is full, process the packet
             if (session->pending_packet_buffer_size == packet_buffer_size) {
                 tc_thread_pool_task_t handler = tc_protocol_packet_handlers[session->pending_packet_opcode];
-                handler(session);
-                p_free(session->pending_packet_buffer);
-                session->pending_packet_opcode = -1;
-                session->pending_packet_buffer = NULL;
-                session->pending_packet_buffer_size = 0;
+                tc_thread_schedule_next(
+                    &session->server->thread_pool,
+                    handler,
+                    tc_server_shutdown_client_task,
+                    session,
+                    TC_THREAD_POOL_TASK_PRIORITY_HIGH
+                );
+                return;
             }
         }
         else if (read_size == 0) { // client disconnected
@@ -168,8 +200,8 @@ void tc_server_client_listen_worker(void *arg) {
     if (error && p_error_get_code(error) == P_ERROR_IO_WOULD_BLOCK) {
         tc_thread_schedule_next(
             &session->server->thread_pool,
-            tc_server_client_listen_worker,
-            shutdown_server_kick,
+            tc_server_client_listen_task,
+            tc_server_shutdown_client_task,
             session,
             TC_THREAD_POOL_TASK_PRIORITY_HIGH
         );
@@ -212,7 +244,7 @@ static void handle_new_session(tc_server_t* server, PSocket* client_socket) {
 
     pboolean schedule_success = tc_thread_schedule_new(
         &server->thread_pool,
-        tc_server_client_listen_worker,
+        tc_server_client_listen_task,
         session,
         TC_THREAD_POOL_TASK_PRIORITY_HIGH
     );
@@ -222,7 +254,7 @@ static void handle_new_session(tc_server_t* server, PSocket* client_socket) {
 }
 
 // Main task chain for listining/accepting new clients
-static void listener_worker_thread(void *arg) {
+static void listener_worker_task(void *arg) {
     tc_server_t *server = (tc_server_t *)arg;
 
     PSocket* client_socket = p_socket_accept(server->listener_socket, NULL);
@@ -234,8 +266,8 @@ static void listener_worker_thread(void *arg) {
     // enque the listener worker again yeilding to other tasks
     tc_thread_schedule_next(
         &server->thread_pool,
-        listener_worker_thread,
-        shutdown_server_kick,
+        listener_worker_task,
+        tc_server_shutdown_client_task,
         server,
         TC_THREAD_POOL_TASK_PRIORITY_HIGH
     );
@@ -254,7 +286,7 @@ pboolean tc_server_start(tc_server_t *server) {
 
     pboolean schedule_success = tc_thread_schedule_new(
         &server->thread_pool,
-        listener_worker_thread,
+        listener_worker_task,
         server,
         TC_THREAD_POOL_TASK_PRIORITY_HIGH
     );

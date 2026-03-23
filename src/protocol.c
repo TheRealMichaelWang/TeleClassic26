@@ -75,6 +75,13 @@ pboolean tc_protocol_server_identification(PSocket* session, const pchar server_
     return TRUE;
 }
 
+pboolean tc_protocol_ping(PSocket* session) {
+    if (!send_byte(session, 0x01)) {
+        return FALSE;
+    }
+    return TRUE;
+}
+
 pboolean tc_protocol_kick(PSocket* session, const pchar msg[]) {
     if (!send_byte(session, 0x0e)) {
         return FALSE;

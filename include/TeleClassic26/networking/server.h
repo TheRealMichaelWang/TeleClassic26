@@ -63,9 +63,20 @@ pboolean tc_server_start(tc_server_t *server);
 // - CAN BE INVOKED FROM ANY THREAD
 void tc_server_stop(tc_server_t *server);
 
-// Worker thread for listening for new clients
+// cleans up pending packet buffer and schedules next task in client task chain
+// - session: the session to cleanup
+// - next_task: the next task to schedule; usually should be tc_server_client_listen_worker
+// NOTE: call this function at the end of each protocol packet handler
+void tc_server_protocol_handler_cleanup(tc_session_t* session, tc_thread_pool_task_t next_task);
+
+// Task that kicks a client and disconnects gracefully
+// - arg: pointer to the session to kick
+// NOTE: use as part of client task chain as the shutdown task
+static void tc_server_shutdown_client_task(void* arg);
+
+// Task that listening for new clients; part of client task chain
 // - arg: pointer to the session to listen for new clients
 // NOTE: use this function to schedule the next task in a task chain
-void tc_server_client_listen_worker(void *arg);
+void tc_server_client_listen_task(void *arg);
 
 #endif /* TELECLASSIC26_SERVER_H */
