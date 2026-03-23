@@ -72,7 +72,12 @@ static void disconnect_session(tc_session_t* session) {
     // shutdown and free the client socket
     p_socket_shutdown(session->client_socket, TRUE, TRUE, NULL);
     p_socket_free(session->client_socket);
-    
+
+    // free the ping profiler
+    if (session->ping_profiler) {
+        p_time_profiler_free(session->ping_profiler);
+    }
+
     // add the session id back to the id buffer
     p_mutex_lock(session->server->lock);
     
@@ -123,9 +128,12 @@ static void tc_server_shutdown_client_task(void* arg) {
 void tc_server_client_listen_task(void *arg) {
     tc_session_t *session = (tc_session_t *)arg;
 
-    if (!tc_protocol_ping(session->client_socket)) {
-        disconnect_session(session);
-        return;
+    if (p_time_profiler_elapsed_usecs(session->ping_profiler) > TC_SERVER_PING_INTERVAL) {
+        if (!tc_protocol_ping(session->client_socket)) {
+            disconnect_session(session);
+            return;
+        }
+        p_time_profiler_reset(session->ping_profiler);
     }
 
     PError *error = NULL;
@@ -241,6 +249,12 @@ static void handle_new_session(tc_server_t* server, PSocket* client_socket) {
     session->pending_packet_opcode = -1;
     session->pending_packet_buffer = NULL;
     session->pending_packet_buffer_size = 0;
+
+    session->ping_profiler = p_time_profiler_new();
+    if (!session->ping_profiler) {
+        kick_session(session, "Out of Memory: Sorry");
+        return;
+    }
 
     pboolean schedule_success = tc_thread_schedule_new(
         &server->thread_pool,

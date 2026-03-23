@@ -6,6 +6,7 @@
 #include <TeleClassic26/networking/protocol.h>
 
 #define TC_SERVER_MAX_SESSIONS 128
+#define TC_SERVER_PING_INTERVAL 15000000 //15 seconds in microseconds
 
 typedef struct tc_server tc_server_t;
 typedef struct tc_session tc_session_t;
@@ -14,6 +15,8 @@ typedef struct tc_session {
     pchar username[TC_PROTOCOL_MAX_STR_LEN];
     PSocket *client_socket;
     tc_server_t *server;
+
+    PTimeProfiler* ping_profiler;
 
     pint pending_packet_opcode;
     pchar *pending_packet_buffer;
