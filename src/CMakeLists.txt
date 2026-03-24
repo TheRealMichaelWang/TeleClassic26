@@ -3,6 +3,8 @@ add_executable(${PROJECT_NAME}
     server.c
     thread_pool.c
     protocol.c
+    heartbeat.c
+    utils.c
 )
 
 target_include_directories(${PROJECT_NAME} PRIVATE

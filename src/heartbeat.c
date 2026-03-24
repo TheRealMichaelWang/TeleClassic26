@@ -1,13 +1,15 @@
 #include <TeleClassic26/authentication/heartbeat.h>
+#include <TeleClassic26/networking/protocol.h>
+#include <TeleClassic26/utils.h>
+#include <string.h>
 
 // manager must be locked before calling this function
 static void* heartbeat_worker(void* arg) {
     heartbeat_manager_t* manager = (heartbeat_manager_t*)arg;
 
     while (!manager->shutdown) {
-        heartbeat_generate_salt(manager->current_salt);
-
         for (pint i = 0; i < manager->num_services; i++) {
+            heartbeat_generate_salt(manager->services[i].current_salt);
             if (!manager->services[i].web_play_url) {
                 p_free(manager->services[i].web_play_url);
                 manager->services[i].web_play_url = NULL;
@@ -15,7 +17,7 @@ static void* heartbeat_worker(void* arg) {
             tc_heartbeat_send_info(
                 &manager->services[i],
                 &manager->info,
-                manager->current_salt
+                manager->services[i].current_salt
             );
         }
         p_mutex_unlock(manager->lock);
@@ -78,14 +80,49 @@ void heartbeat_manager_finalize(heartbeat_manager_t* manager) {
     }
 }
 
-// Validates the username with the given key
 heartbeat_service_t* heartbeat_manager_validate(
     heartbeat_manager_t* manager, 
     const pchar* username, 
     const pchar* key
 ) {
-    for (pint i = 0; i < manager->num_services; i++) {
-        
+    if (P_UNLIKELY(manager == NULL || username == NULL || key == NULL)) {
+        return NULL;
     }
+
+    psize username_len = tc_bounded_buffer_length(username, TC_PROTOCOL_MAX_STR_LEN);
+    psize key_len = tc_bounded_buffer_length(key, TC_PROTOCOL_MAX_STR_LEN);
+
+    if (P_UNLIKELY(key_len == 0)) {
+        return NULL;
+    }
+
+    puchar decoded_key[key_len];
+    if (!tc_decode_base62_bytes(key, key_len, decoded_key, key_len)) {
+        return NULL;
+    }
+
+    p_mutex_lock(manager->lock);
+
+    for (pint i = 0; i < manager->num_services; i++) {
+        PCryptoHash* md5 = p_crypto_hash_new(P_CRYPTO_HASH_TYPE_MD5);
+        if (P_UNLIKELY(md5 == NULL)) {
+            continue;
+        }
+
+        p_crypto_hash_update(md5, (const puchar*)manager->services[i].current_salt, TC_HEARTBEAT_SALT_LENGTH);
+        p_crypto_hash_update(md5, (const puchar*)username, username_len);
+
+        puchar digest[TC_HEARTBEAT_SALT_LENGTH];
+        psize digest_len = TC_HEARTBEAT_SALT_LENGTH;
+        p_crypto_hash_get_digest(md5, digest, &digest_len);
+        p_crypto_hash_free(md5);
+
+        if (digest_len == TC_HEARTBEAT_SALT_LENGTH && memcmp(decoded_key, digest, TC_HEARTBEAT_SALT_LENGTH) == 0) {
+            p_mutex_unlock(manager->lock);
+            return &manager->services[i];
+        }
+    }
+
+    p_mutex_unlock(manager->lock);
     return NULL;
 }

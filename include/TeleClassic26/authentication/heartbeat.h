@@ -17,10 +17,11 @@ typedef struct tc_heartbeat_info {
 } tc_heartbeat_info_t;
 
 typedef struct heartbeat_service {
+    pchar current_salt[TC_HEARTBEAT_SALT_LENGTH];
+    pchar* web_play_url;
+
     const pchar* hostname;
     pint port;
-
-    pchar* web_play_url;
 } heartbeat_service_t;
 
 // Sends the server info to the heartbeat server
@@ -38,7 +39,6 @@ pboolean tc_heartbeat_send_info(
 // Manager for the heartbeat system
 typedef struct heartbeat_manager {
     tc_heartbeat_info_t info;
-    pchar current_salt[TC_HEARTBEAT_SALT_LENGTH];
 
     heartbeat_service_t* services;
     PUThread* heartbeat_thread;
