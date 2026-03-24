@@ -9,7 +9,7 @@ pboolean tc_server_init(
     pint port, 
     pint listener_backlog,
     pint reserved_threads,
-    heartbeat_service_t* heartbeat_services,
+    tc_heartbeat_service_t* heartbeat_services,
     pint num_heartbeat_services,
     tc_heartbeat_info_t heartbeat_info
 ) {

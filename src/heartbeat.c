@@ -1,10 +1,11 @@
 #include <TeleClassic26/authentication/heartbeat.h>
 #include <TeleClassic26/networking/protocol.h>
+#include <stdlib.h>
 #include <string.h>
 
 // manager must be locked before calling this function
 static void* heartbeat_worker(void* arg) {
-    heartbeat_manager_t* manager = (heartbeat_manager_t*)arg;
+    tc_heartbeat_manager_t* manager = (tc_heartbeat_manager_t*)arg;
 
     while (!manager->shutdown) {
         for (pint i = 0; i < manager->num_services; i++) {
@@ -31,9 +32,9 @@ static void* heartbeat_worker(void* arg) {
 
 // Initializes the heartbeat manager
 pboolean heartbeat_manager_init(
-    heartbeat_manager_t* manager, 
+    tc_heartbeat_manager_t* manager, 
     tc_heartbeat_info_t info,
-    heartbeat_service_t* services,
+    tc_heartbeat_service_t* services,
     pint num_services
 ) {
     manager->info = info;
@@ -66,7 +67,7 @@ pboolean heartbeat_manager_init(
 }
 
 // Finalizes the heartbeat manager
-void heartbeat_manager_finalize(heartbeat_manager_t* manager) {
+void heartbeat_manager_finalize(tc_heartbeat_manager_t* manager) {
     manager->shutdown = TRUE;
     p_uthread_join(manager->heartbeat_thread);
     p_uthread_unref(manager->heartbeat_thread);
@@ -79,8 +80,18 @@ void heartbeat_manager_finalize(heartbeat_manager_t* manager) {
     }
 }
 
-heartbeat_service_t* heartbeat_manager_validate(
-    heartbeat_manager_t* manager, 
+// Generates a new salt for the service
+void heartbeat_generate_salt(pchar salt[TC_HEARTBEAT_SALT_LENGTH]) {
+    static const pchar base62_alphabet[] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+
+    for (psize i = 0; i < TC_HEARTBEAT_SALT_LENGTH; i++) {
+        salt[i] = base62_alphabet[rand() % 62];
+    }
+}
+
+// Validates the username with the given key
+tc_heartbeat_service_t* heartbeat_manager_validate(
+    tc_heartbeat_manager_t* manager, 
     const pchar* username, 
     const pchar* key
 ) {

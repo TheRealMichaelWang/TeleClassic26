@@ -18,7 +18,7 @@ typedef struct tc_session {
     tc_server_t *server;
 
     PTimeProfiler* ping_profiler;
-    heartbeat_service_t* authenticated_service;
+    tc_heartbeat_service_t* authenticated_service;
 
     pint pending_packet_opcode;
     pchar *pending_packet_buffer;
@@ -33,7 +33,7 @@ typedef struct tc_server {
     pint id_buffer_head;
 
     tc_thread_pool_t thread_pool;
-    heartbeat_manager_t heartbeat_manager;
+    tc_heartbeat_manager_t heartbeat_manager;
 
     pchar motd[TC_PROTOCOL_MAX_STR_LEN];
 
@@ -56,7 +56,7 @@ pboolean tc_server_init(
     pint port, 
     pint listener_backlog,
     pint reserved_threads,
-    heartbeat_service_t* heartbeat_services,
+    tc_heartbeat_service_t* heartbeat_services,
     pint num_heartbeat_services,
     tc_heartbeat_info_t heartbeat_info
 );

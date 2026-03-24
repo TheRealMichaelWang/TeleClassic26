@@ -16,13 +16,13 @@ typedef struct tc_heartbeat_info {
     pboolean allow_web_play; //Optional, can be FALSE
 } tc_heartbeat_info_t;
 
-typedef struct heartbeat_service {
+typedef struct tc_heartbeat_service {
     pchar current_salt[TC_HEARTBEAT_SALT_LENGTH];
     pchar* web_play_url;
 
     const pchar* hostname;
     pint port;
-} heartbeat_service_t;
+} tc_heartbeat_service_t;
 
 // Sends the server info to the heartbeat server
 // - hostname: the hostname of the heartbeat server
@@ -31,22 +31,22 @@ typedef struct heartbeat_service {
 // - res: the pointer response from the heartbeat server to write to upon success
 // NOTE: res is not valid if FALSE is returned
 pboolean tc_heartbeat_send_info(
-    heartbeat_service_t* service,
+    tc_heartbeat_service_t* service,
     const tc_heartbeat_info_t* info,
     const pchar salt[TC_HEARTBEAT_SALT_LENGTH]
 );
 
 // Manager for the heartbeat system
-typedef struct heartbeat_manager {
+typedef struct tc_heartbeat_manager {
     tc_heartbeat_info_t info;
 
-    heartbeat_service_t* services;
+    tc_heartbeat_service_t* services;
     PUThread* heartbeat_thread;
     PMutex* lock;
 
     pint num_services;
     volatile pboolean shutdown;
-} heartbeat_manager_t;
+} tc_heartbeat_manager_t;
 
 // Generates a random base-62 salt
 // - salt: the buffer to write the salt to
@@ -61,22 +61,22 @@ void heartbeat_generate_salt(pchar salt[TC_HEARTBEAT_SALT_LENGTH]);
 // - num_services: the number of services to send the heartbeat to
 // - return: TRUE if the heartbeat manager was initialized, FALSE otherwise
 pboolean heartbeat_manager_init(
-    heartbeat_manager_t* manager, 
+    tc_heartbeat_manager_t* manager, 
     tc_heartbeat_info_t info,
-    heartbeat_service_t* services,
+    tc_heartbeat_service_t* services,
     pint num_services
 );
 
 // Finalizes the heartbeat manager
-void heartbeat_manager_finalize(heartbeat_manager_t* manager);
+void heartbeat_manager_finalize(tc_heartbeat_manager_t* manager);
 
 // Validates the username with the given key
 // - return: the service that the username and key are valid for, NULL if not valid
 // - manager: the heartbeat manager to validate the username with
 // - username: the username to validate
 // - key: the key to validate
-heartbeat_service_t* heartbeat_manager_validate(
-    heartbeat_manager_t* manager, 
+tc_heartbeat_service_t* heartbeat_manager_validate(
+    tc_heartbeat_manager_t* manager, 
     const pchar* username, 
     const pchar* key
 );
