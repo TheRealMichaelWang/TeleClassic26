@@ -71,7 +71,7 @@ static void handle_player_identification(void* arg, tc_thread_pool_task_priority
     pchar key[TC_PROTOCOL_MAX_STR_LEN];
     memcpy(key, &session->pending_packet_buffer[1 + TC_PROTOCOL_MAX_STR_LEN], TC_PROTOCOL_MAX_STR_LEN);
 
-    session->authenticated_service = heartbeat_manager_validate(
+    session->authenticated_service = tc_heartbeat_manager_validate(
         &session->server->heartbeat_manager, 
         session->username, 
         key

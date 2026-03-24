@@ -6,6 +6,7 @@
 // manager must be locked before calling this function
 static void* heartbeat_worker(void* arg) {
     tc_heartbeat_manager_t* manager = (tc_heartbeat_manager_t*)arg;
+    p_cond_variable_wait(manager->start_signal, manager->lock);
 
     while (!manager->shutdown) {
         for (pint i = 0; i < manager->num_services; i++) {
@@ -47,6 +48,12 @@ pboolean heartbeat_manager_init(
         return FALSE;
     }
 
+    manager->start_signal = p_cond_variable_new();
+    if (P_UNLIKELY(manager->start_signal == NULL)) {
+        p_mutex_free(manager->lock);
+        return FALSE;
+    }
+
     p_mutex_lock(manager->lock);
     manager->heartbeat_thread = p_uthread_create(
         heartbeat_worker, 
@@ -55,7 +62,8 @@ pboolean heartbeat_manager_init(
         NULL
     );
     if (P_UNLIKELY(manager->heartbeat_thread == NULL)) {
-        p_mutex_unlock(manager->lock);
+        p_cond_variable_free(manager->start_signal);
+        p_mutex_free(manager->lock);
         return FALSE;
     }
 
@@ -67,8 +75,7 @@ pboolean heartbeat_manager_init(
 }
 
 // Finalizes the heartbeat manager
-void heartbeat_manager_finalize(tc_heartbeat_manager_t* manager) {
-    manager->shutdown = TRUE;
+void tc_heartbeat_manager_finalize(tc_heartbeat_manager_t* manager) {
     p_uthread_join(manager->heartbeat_thread);
     p_uthread_unref(manager->heartbeat_thread);
     p_mutex_free(manager->lock);
@@ -89,8 +96,19 @@ void heartbeat_generate_salt(pchar salt[TC_HEARTBEAT_SALT_LENGTH]) {
     }
 }
 
+// Starts the heartbeat manager
+void tc_heartbeat_manager_start(tc_heartbeat_manager_t* manager) {
+    p_cond_variable_signal(manager->start_signal);
+}
+
+// Stops the heartbeat manager
+void tc_heartbeat_manager_stop(tc_heartbeat_manager_t* manager) {
+    manager->shutdown = TRUE;
+    p_cond_variable_signal(manager->start_signal);
+}
+
 // Validates the username with the given key
-tc_heartbeat_service_t* heartbeat_manager_validate(
+tc_heartbeat_service_t* tc_heartbeat_manager_validate(
     tc_heartbeat_manager_t* manager, 
     const pchar* username, 
     const pchar* key

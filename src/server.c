@@ -1,4 +1,5 @@
 #include <TeleClassic26/networking/protocol.h>
+#include "TeleClassic26/authentication/heartbeat.h"
 #include "TeleClassic26/thread_pool.h"
 #include <plibsys.h>
 #include <TeleClassic26/networking/server.h>
@@ -69,6 +70,7 @@ void tc_server_finalize(tc_server_t *server) {
     }
 
     tc_thread_pool_finalize(&server->thread_pool);
+    tc_heartbeat_manager_finalize(&server->heartbeat_manager);
 
     if (server->started) {
         p_socket_close(server->listener_socket, NULL);
@@ -323,6 +325,8 @@ pboolean tc_server_start(tc_server_t *server) {
         return FALSE;
     }
 
+    tc_heartbeat_manager_start(&server->heartbeat_manager);
+
     server->started = TRUE;
     return TRUE;
 }
@@ -332,5 +336,6 @@ void tc_server_stop(tc_server_t *server) {
         return;
     }
 
+    tc_heartbeat_manager_stop(&server->heartbeat_manager);
     tc_thread_pool_stop(&server->thread_pool);
 }

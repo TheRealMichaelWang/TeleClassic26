@@ -43,6 +43,7 @@ typedef struct tc_heartbeat_manager {
     tc_heartbeat_service_t* services;
     PUThread* heartbeat_thread;
     PMutex* lock;
+    PCondVariable* start_signal;
 
     pint num_services;
     volatile pboolean shutdown;
@@ -68,14 +69,22 @@ pboolean heartbeat_manager_init(
 );
 
 // Finalizes the heartbeat manager
-void heartbeat_manager_finalize(tc_heartbeat_manager_t* manager);
+void tc_heartbeat_manager_finalize(tc_heartbeat_manager_t* manager);
+
+// Starts the heartbeat manager
+// - manager: the heartbeat manager to start
+void tc_heartbeat_manager_start(tc_heartbeat_manager_t* manager);
+
+// Stops the heartbeat manager
+// - manager: the heartbeat manager to stop
+void tc_heartbeat_manager_stop(tc_heartbeat_manager_t* manager);
 
 // Validates the username with the given key
 // - return: the service that the username and key are valid for, NULL if not valid
 // - manager: the heartbeat manager to validate the username with
 // - username: the username to validate
 // - key: the key to validate
-tc_heartbeat_service_t* heartbeat_manager_validate(
+tc_heartbeat_service_t* tc_heartbeat_manager_validate(
     tc_heartbeat_manager_t* manager, 
     const pchar* username, 
     const pchar* key
