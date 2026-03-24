@@ -121,7 +121,14 @@ pboolean tc_thread_pool_init(tc_thread_pool_t *pool, psize reserved_threads) {
 
     pool->num_threads = num_threads;
     pool->lock = p_mutex_new();
+    if (pool->lock == NULL) {
+        return FALSE;
+    }
     pool->not_empty = p_cond_variable_new();
+    if (pool->not_empty == NULL) {
+        p_mutex_free(pool->lock);
+        return FALSE;
+    }
     pool->shutdown = FALSE;
     pool->active_threads = 0;
 
@@ -135,6 +142,14 @@ pboolean tc_thread_pool_init(tc_thread_pool_t *pool, psize reserved_threads) {
             TRUE, 
             "TC26 Thread Pool Worker"
         );
+        if (pool->thread_buffer[i] == NULL) {
+            p_mutex_free(pool->lock);
+            p_cond_variable_free(pool->not_empty);
+            for (pint j = 0; j < i; j++) {
+                p_uthread_unref(pool->thread_buffer[j]);
+            }
+            return FALSE;
+        }
     }
 
     return TRUE;

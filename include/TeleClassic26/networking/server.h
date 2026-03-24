@@ -18,13 +18,13 @@ typedef struct tc_session {
     tc_server_t *server;
 
     PTimeProfiler* ping_profiler;
+    heartbeat_service_t* authenticated_service;
 
     pint pending_packet_opcode;
     pchar *pending_packet_buffer;
     psize pending_packet_buffer_size;
 
     pint id;
-    pboolean authenticated;
 } tc_session_t;
 
 typedef struct tc_server {
@@ -55,7 +55,10 @@ pboolean tc_server_init(
     const char* hostname, 
     pint port, 
     pint listener_backlog,
-    pint reserved_threads
+    pint reserved_threads,
+    heartbeat_service_t* heartbeat_services,
+    pint num_heartbeat_services,
+    tc_heartbeat_info_t heartbeat_info
 );
 
 // Finalize the server

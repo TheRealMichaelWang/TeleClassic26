@@ -53,7 +53,7 @@ static pboolean send_string(PSocket* socket, const pchar str[]) {
 static void handle_player_identification(void* arg, tc_thread_pool_task_priority_t priority) {
     tc_session_t* session = (tc_session_t*)arg;
 
-    if (session->authenticated) {
+    if (session->authenticated_service) {
         tc_server_kick_session(session, "Already Identified: Your client has a bug.");
         return;
     }
@@ -71,12 +71,16 @@ static void handle_player_identification(void* arg, tc_thread_pool_task_priority
     pchar key[TC_PROTOCOL_MAX_STR_LEN];
     memcpy(key, &session->pending_packet_buffer[1 + TC_PROTOCOL_MAX_STR_LEN], TC_PROTOCOL_MAX_STR_LEN);
 
-    if (!heartbeat_manager_validate(session->username, key)) {
+    session->authenticated_service = heartbeat_manager_validate(
+        &session->server->heartbeat_manager, 
+        session->username, 
+        key
+    );
+    if (!session->authenticated_service) {
         tc_server_kick_session(session, "Could not validate your identity.");
         return;
     }
 
-    session->authenticated = TRUE;
     pboolean identify_success = tc_protocol_server_identification(
         session->client_socket, 
         session->server->heartbeat_manager.info.server_name, 

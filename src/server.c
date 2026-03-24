@@ -8,7 +8,10 @@ pboolean tc_server_init(
     const char* hostname, 
     pint port, 
     pint listener_backlog,
-    pint reserved_threads
+    pint reserved_threads,
+    heartbeat_service_t* heartbeat_services,
+    pint num_heartbeat_services,
+    tc_heartbeat_info_t heartbeat_info
 ) {
     server->address = p_socket_address_new(hostname, port);
     if (server->address == NULL) {
@@ -32,6 +35,19 @@ pboolean tc_server_init(
     }
 
     if (!tc_thread_pool_init(&server->thread_pool, reserved_threads)) {
+        p_socket_free(server->listener_socket);
+        p_socket_address_free(server->address);
+        return FALSE;
+    }
+
+    if (!heartbeat_manager_init(
+        &server->heartbeat_manager, 
+        heartbeat_info,
+        heartbeat_services,
+        num_heartbeat_services
+    )) {
+        tc_thread_pool_stop(&server->thread_pool);
+        tc_thread_pool_finalize(&server->thread_pool);
         p_socket_free(server->listener_socket);
         p_socket_address_free(server->address);
         return FALSE;
@@ -246,7 +262,7 @@ static void handle_new_session(tc_server_t* server, PSocket* client_socket) {
     session->pending_packet_opcode = -1;
     session->pending_packet_buffer = NULL;
     session->pending_packet_buffer_size = 0;
-    session->authenticated = FALSE;
+    session->authenticated_service = NULL;
 
     session->ping_profiler = p_time_profiler_new();
     if (!session->ping_profiler) {

@@ -7,7 +7,7 @@ pboolean run_server(void) {
     if (server == NULL) {
         return FALSE;
     }
-    int init_success = tc_server_init(server, "0.0.0.0", 8080, 128, 16);
+    int init_success = tc_server_init(server, "0.0.0.0", 8080, 128, 16,);
     if (!init_success) {
         tc_server_finalize(server);
         p_free(server);
