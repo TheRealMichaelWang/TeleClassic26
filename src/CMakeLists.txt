@@ -4,7 +4,6 @@ add_executable(${PROJECT_NAME}
     thread_pool.c
     protocol.c
     heartbeat.c
-    utils.c
 )
 
 target_include_directories(${PROJECT_NAME} PRIVATE

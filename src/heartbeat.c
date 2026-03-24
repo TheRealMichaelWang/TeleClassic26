@@ -1,6 +1,5 @@
 #include <TeleClassic26/authentication/heartbeat.h>
 #include <TeleClassic26/networking/protocol.h>
-#include <TeleClassic26/utils.h>
 #include <string.h>
 
 // manager must be locked before calling this function
@@ -89,17 +88,7 @@ heartbeat_service_t* heartbeat_manager_validate(
         return NULL;
     }
 
-    psize username_len = tc_bounded_buffer_length(username, TC_PROTOCOL_MAX_STR_LEN);
-    psize key_len = tc_bounded_buffer_length(key, TC_PROTOCOL_MAX_STR_LEN);
-
-    if (P_UNLIKELY(key_len == 0)) {
-        return NULL;
-    }
-
-    puchar decoded_key[key_len];
-    if (!tc_decode_base62_bytes(key, key_len, decoded_key, key_len)) {
-        return NULL;
-    }
+    psize username_len = strnlen(username, TC_PROTOCOL_MAX_STR_LEN);
 
     p_mutex_lock(manager->lock);
 
@@ -112,15 +101,19 @@ heartbeat_service_t* heartbeat_manager_validate(
         p_crypto_hash_update(md5, (const puchar*)manager->services[i].current_salt, TC_HEARTBEAT_SALT_LENGTH);
         p_crypto_hash_update(md5, (const puchar*)username, username_len);
 
-        puchar digest[TC_HEARTBEAT_SALT_LENGTH];
-        psize digest_len = TC_HEARTBEAT_SALT_LENGTH;
-        p_crypto_hash_get_digest(md5, digest, &digest_len);
+        pchar* hex = p_crypto_hash_get_string(md5);
         p_crypto_hash_free(md5);
 
-        if (digest_len == TC_HEARTBEAT_SALT_LENGTH && memcmp(decoded_key, digest, TC_HEARTBEAT_SALT_LENGTH) == 0) {
+        if (hex == NULL) {
+            continue;
+        }
+
+        if (strncmp(key, hex, TC_PROTOCOL_MAX_STR_LEN) == 0) {
+            p_free(hex);
             p_mutex_unlock(manager->lock);
             return &manager->services[i];
         }
+        p_free(hex);
     }
 
     p_mutex_unlock(manager->lock);
