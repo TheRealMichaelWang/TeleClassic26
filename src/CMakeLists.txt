@@ -10,7 +10,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_SOURCE_DIR}/include
 )
 
-target_link_libraries(${PROJECT_NAME} PRIVATE plibsys)
+target_link_libraries(${PROJECT_NAME} PRIVATE plibsys libcurl)
 
 # Optional: set output to build/bin for cleaner layout
 set_target_properties(${PROJECT_NAME} PROPERTIES
