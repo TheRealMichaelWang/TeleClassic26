@@ -4,6 +4,7 @@
 #include <plibsys.h>
 
 #define TC_HEARTBEAT_SALT_LENGTH 16
+#define TC_URL_BUFFER_SIZE 128
 
 typedef struct tc_heartbeat_info {
     pint port;
@@ -22,6 +23,7 @@ typedef struct tc_heartbeat_service {
 
     const pchar* hostname;
     pint port;
+    pboolean use_https;
 } tc_heartbeat_service_t;
 
 // Sends the server info to the heartbeat server
@@ -32,6 +34,7 @@ typedef struct tc_heartbeat_service {
 // NOTE: res is not valid if FALSE is returned
 pboolean tc_heartbeat_send_info(
     tc_heartbeat_service_t* service,
+    const pint active_players,
     const tc_heartbeat_info_t* info,
     const pchar salt[TC_HEARTBEAT_SALT_LENGTH]
 );
@@ -46,6 +49,8 @@ typedef struct tc_heartbeat_manager {
     PCondVariable* start_signal;
 
     pint num_services;
+
+    volatile pint* active_players;
     volatile pboolean shutdown;
 } tc_heartbeat_manager_t;
 
@@ -65,6 +70,7 @@ pboolean heartbeat_manager_init(
     tc_heartbeat_manager_t* manager, 
     tc_heartbeat_info_t info,
     tc_heartbeat_service_t* services,
+    volatile pint* active_players,
     pint num_services
 );
 

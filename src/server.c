@@ -45,6 +45,7 @@ pboolean tc_server_init(
         &server->heartbeat_manager, 
         heartbeat_info,
         heartbeat_services,
+        &server->active_players,
         num_heartbeat_services
     )) {
         tc_thread_pool_stop(&server->thread_pool);
@@ -60,6 +61,8 @@ pboolean tc_server_init(
         server->id_buffer[i] = i;
     }
     server->id_buffer_head = 0;
+
+    server->active_players = 0;
 
     return TRUE;
 }
@@ -99,6 +102,10 @@ static void disconnect_session(tc_session_t* session) {
     // add the session id back to the id buffer
     p_mutex_lock(session->server->lock);
     
+    if (session->authenticated_service) {
+        p_atomic_int_dec_and_test(&session->server->active_players);
+    }
+
     session->server->id_buffer_head--;
     session->server->id_buffer[session->server->id_buffer_head] = session->id;
 

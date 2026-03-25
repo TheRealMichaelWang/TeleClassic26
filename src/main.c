@@ -1,11 +1,13 @@
 #include <plibsys.h>
+#include <curl/curl.h>
 #include <TeleClassic26/version.h>
 #include <TeleClassic26/networking/server.h>
 
 tc_heartbeat_service_t heartbeat_services[] = {
     {
-        .hostname = "https://www.classicube.net",
-        .port = 8080,
+        .hostname = "www.classicube.net",
+        .port = 443,
+        .use_https = TRUE,
     }
 };
 
@@ -50,10 +52,12 @@ pboolean run_server(void) {
 int main(void)
 {
     p_libsys_init();
+    curl_global_init(CURL_GLOBAL_ALL);
 
     pboolean server_success = run_server();
 
     p_libsys_shutdown();
+    curl_global_cleanup();
 
     return 0;
 }

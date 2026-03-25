@@ -41,6 +41,7 @@ typedef struct tc_server {
     PSocket *listener_socket;
 
     PMutex *lock;
+    volatile pint active_players;
 
     pboolean started;
 } tc_server_t;

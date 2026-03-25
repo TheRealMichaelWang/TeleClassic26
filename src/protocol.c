@@ -104,6 +104,9 @@ static void handle_player_identification(void* arg, tc_thread_pool_task_priority
         tc_server_kick_session(session, "Server is Busy: Please try again or come back soon.");
         return;
     }
+
+    p_atomic_int_inc(&session->server->active_players);
+    return;
 }
 
 const psize tc_protocol_packet_sizes[TC_PROTOCOL_TOTAL_PACKETS] = {

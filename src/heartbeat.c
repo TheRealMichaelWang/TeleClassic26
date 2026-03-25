@@ -1,7 +1,10 @@
-#include <TeleClassic26/authentication/heartbeat.h>
-#include <TeleClassic26/networking/protocol.h>
+#include "plibsys.h"
+#include <curl/urlapi.h>
 #include <stdlib.h>
 #include <string.h>
+#include <curl/curl.h>
+#include <TeleClassic26/authentication/heartbeat.h>
+#include <TeleClassic26/networking/protocol.h>
 
 // manager must be locked before calling this function
 static void* heartbeat_worker(void* arg) {
@@ -9,14 +12,17 @@ static void* heartbeat_worker(void* arg) {
     p_cond_variable_wait(manager->start_signal, manager->lock);
 
     while (!manager->shutdown) {
+        // lock the manager to prevent race conditions
+        p_mutex_lock(manager->lock);
         for (pint i = 0; i < manager->num_services; i++) {
             heartbeat_generate_salt(manager->services[i].current_salt);
-            if (!manager->services[i].web_play_url) {
+            if (manager->services[i].web_play_url) {
                 p_free(manager->services[i].web_play_url);
                 manager->services[i].web_play_url = NULL;
             }
             tc_heartbeat_send_info(
                 &manager->services[i],
+                p_atomic_int_get(manager->active_players),
                 &manager->info,
                 manager->services[i].current_salt
             );
@@ -24,10 +30,7 @@ static void* heartbeat_worker(void* arg) {
         p_mutex_unlock(manager->lock);
 
         p_uthread_sleep(45000000); // 45 seconds
-        
-        p_mutex_lock(manager->lock);
     }
-    p_mutex_unlock(manager->lock);
     return NULL;
 }
 
@@ -36,11 +39,13 @@ pboolean heartbeat_manager_init(
     tc_heartbeat_manager_t* manager, 
     tc_heartbeat_info_t info,
     tc_heartbeat_service_t* services,
+    volatile pint* active_players,
     pint num_services
 ) {
     manager->info = info;
     manager->services = services;
     manager->num_services = num_services;
+    manager->active_players = active_players;
     manager->shutdown = FALSE;
     manager->lock = p_mutex_new();
 
@@ -54,7 +59,6 @@ pboolean heartbeat_manager_init(
         return FALSE;
     }
 
-    p_mutex_lock(manager->lock);
     manager->heartbeat_thread = p_uthread_create(
         heartbeat_worker, 
         manager, 
@@ -78,6 +82,7 @@ pboolean heartbeat_manager_init(
 void tc_heartbeat_manager_finalize(tc_heartbeat_manager_t* manager) {
     p_uthread_join(manager->heartbeat_thread);
     p_uthread_unref(manager->heartbeat_thread);
+    p_cond_variable_free(manager->start_signal);
     p_mutex_free(manager->lock);
 
     for (pint i = 0; i < manager->num_services; i++) {
@@ -137,7 +142,8 @@ tc_heartbeat_service_t* tc_heartbeat_manager_validate(
             continue;
         }
 
-        if (strncmp(key, hex, TC_PROTOCOL_MAX_STR_LEN) == 0) {
+        psize hex_len = strlen(hex);
+        if (strncmp(key, hex, hex_len) == 0) {
             p_free(hex);
             p_mutex_unlock(manager->lock);
             return &manager->services[i];
@@ -147,4 +153,127 @@ tc_heartbeat_service_t* tc_heartbeat_manager_validate(
 
     p_mutex_unlock(manager->lock);
     return NULL;
+}
+
+typedef struct heartbeat_response_wb_data {
+    pchar response[TC_URL_BUFFER_SIZE];
+    psize size;
+} heartbeat_response_wb_data_t;
+
+static size_t heartbeat_response_wb(void* data, size_t size, size_t nmemb, void* userdata) {
+    heartbeat_response_wb_data_t* hb_data = (heartbeat_response_wb_data_t*)userdata;
+    size_t remaining_capacity = TC_URL_BUFFER_SIZE - hb_data->size;
+
+    size_t realsize = size * nmemb;
+    if (realsize > remaining_capacity) {
+        return 0;
+    }
+
+    memcpy(&hb_data->response[hb_data->size], data, realsize);
+    hb_data->size += realsize;
+
+    return realsize;
+}
+
+pboolean tc_heartbeat_send_info(
+    tc_heartbeat_service_t* service,
+    const pint active_players,
+    const tc_heartbeat_info_t* info,
+    const pchar salt[TC_HEARTBEAT_SALT_LENGTH]
+) {
+    CURL* curl = curl_easy_init();
+    if (P_UNLIKELY(curl == NULL)) {
+        return FALSE;
+    }
+
+    CURLU* url = curl_url();
+    if (P_UNLIKELY(url == NULL)) {
+        curl_easy_cleanup(curl);
+        return FALSE;
+    }
+
+    const char* scheme = service->use_https ? "https" : "http";
+    curl_url_set(url, CURLUPART_SCHEME, scheme, 0);
+    curl_url_set(url, CURLUPART_HOST, service->hostname, 0);
+    curl_url_set(url, CURLUPART_PATH, "/heartbeat", 0);
+
+    char http_port_str[6];
+    snprintf(http_port_str, sizeof(http_port_str), "%d", service->port);
+    curl_url_set(url, CURLUPART_PORT, http_port_str, 0);
+
+    char port_str[11];
+    snprintf(port_str, sizeof(port_str), "port=%d", info->port);
+    curl_url_set(url, CURLUPART_QUERY, port_str, CURLU_APPENDQUERY);
+
+    char max_players_str[11];
+    snprintf(max_players_str, sizeof(max_players_str), "max=%d", info->max_players);
+    curl_url_set(url, CURLUPART_QUERY, max_players_str, CURLU_APPENDQUERY);
+
+    char name_str[TC_PROTOCOL_MAX_STR_LEN + 6] = "name=";
+    strncat(name_str, info->server_name, TC_PROTOCOL_MAX_STR_LEN);
+    curl_url_set(url, CURLUPART_QUERY, name_str, CURLU_APPENDQUERY | CURLU_URLENCODE);
+
+    char is_public_str[14];
+    snprintf(is_public_str, sizeof(is_public_str), "public=%s", (info->is_public ? "True" : "False"));
+    curl_url_set(url, CURLUPART_QUERY, is_public_str, CURLU_APPENDQUERY);
+
+    char protocol_version_str[13];
+    snprintf(protocol_version_str, sizeof(protocol_version_str), "version=%d", info->protocol_version);
+    curl_url_set(url, CURLUPART_QUERY, protocol_version_str, CURLU_APPENDQUERY);
+
+    char salt_str[TC_HEARTBEAT_SALT_LENGTH + 6] = "salt=";
+    strncat(salt_str, salt, TC_HEARTBEAT_SALT_LENGTH);
+    curl_url_set(url, CURLUPART_QUERY, salt_str, CURLU_APPENDQUERY);
+
+    char active_players_str[18];
+    snprintf(active_players_str, sizeof(active_players_str), "users=%d", active_players);
+    curl_url_set(url, CURLUPART_QUERY, active_players_str, CURLU_APPENDQUERY);
+
+    if (info->software_name) {
+        char software_name_str[TC_PROTOCOL_MAX_STR_LEN + 10] = "software=";
+        strncat(software_name_str, info->software_name, TC_PROTOCOL_MAX_STR_LEN);
+        curl_url_set(url, CURLUPART_QUERY, software_name_str, CURLU_APPENDQUERY | CURLU_URLENCODE);
+    }
+
+    if (info->allow_web_play) {
+        curl_url_set(url, CURLUPART_QUERY, "web=True", CURLU_APPENDQUERY);
+    }
+
+    char *full_url_str = NULL;
+    curl_url_get(url, CURLUPART_URL, &full_url_str, 0);
+    if (P_UNLIKELY(full_url_str == NULL)) {
+        curl_url_cleanup(url);
+        curl_easy_cleanup(curl);
+        return FALSE;
+    }
+    
+    curl_easy_setopt(curl, CURLOPT_URL, full_url_str);
+    curl_easy_setopt(curl, CURLOPT_PROTOCOLS_STR, scheme);
+    curl_easy_setopt(curl, CURLOPT_REDIR_PROTOCOLS_STR, scheme);
+    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
+    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 2L);
+
+    heartbeat_response_wb_data_t hb_data;
+    hb_data.size = 0;
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, heartbeat_response_wb);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &hb_data);
+
+    CURLcode res = curl_easy_perform(curl);
+    curl_easy_cleanup(curl);
+    curl_url_cleanup(url);
+    curl_free(full_url_str);
+
+    if (res != CURLE_OK) {
+        return FALSE;
+    }
+
+    service->web_play_url = p_malloc(hb_data.size + 1);
+    if (P_UNLIKELY(service->web_play_url == NULL)) {
+        return FALSE;
+    }
+
+    memcpy(service->web_play_url, hb_data.response, hb_data.size);
+    service->web_play_url[hb_data.size] = '\0';
+
+    return TRUE;
 }
