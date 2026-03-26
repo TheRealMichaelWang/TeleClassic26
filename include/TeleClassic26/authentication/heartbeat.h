@@ -47,6 +47,7 @@ typedef struct tc_heartbeat_manager {
     PUThread* heartbeat_thread;
     PMutex* lock;
     PCondVariable* start_signal;
+    PTree* auth_tree; //stores 
 
     pint num_services;
 

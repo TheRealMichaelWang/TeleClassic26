@@ -50,6 +50,14 @@ static pboolean send_string(PSocket* socket, const pchar str[]) {
     return is_waiting;
 }
 
+static void decode_string(pchar* dest_buffer, pchar* packet_buffer) {
+    memcpy(dest_buffer, packet_buffer, TC_PROTOCOL_MAX_STR_LEN);
+    for (psize i = TC_PROTOCOL_MAX_STR_LEN; i > 0; i--) {
+        if (dest_buffer[i - 1] != 0x20) break;
+        dest_buffer[i - 1] = '\0';
+    }
+}
+
 static void handle_player_identification(void* arg, tc_thread_pool_task_priority_t priority) {
     tc_session_t* session = (tc_session_t*)arg;
 
@@ -66,10 +74,11 @@ static void handle_player_identification(void* arg, tc_thread_pool_task_priority
     }
 
     // copy the username from the packet buffer
-    memcpy(session->username, &session->pending_packet_buffer[1], TC_PROTOCOL_MAX_STR_LEN);
+    decode_string(session->username, &session->pending_packet_buffer[1]);
 
+    // copy the key from the packet buffer
     pchar key[TC_PROTOCOL_MAX_STR_LEN];
-    memcpy(key, &session->pending_packet_buffer[1 + TC_PROTOCOL_MAX_STR_LEN], TC_PROTOCOL_MAX_STR_LEN);
+    decode_string(key, &session->pending_packet_buffer[1 + TC_PROTOCOL_MAX_STR_LEN]);
 
     session->authenticated_service = tc_heartbeat_manager_validate(
         &session->server->heartbeat_manager, 
