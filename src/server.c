@@ -35,7 +35,7 @@ pboolean tc_server_init(
         return FALSE;
     }
 
-    if (!tc_thread_pool_init(&server->thread_pool, reserved_threads)) {
+    if (!tc_thread_pool_init(&server->thread_pool, "AABAABC", reserved_threads)) {
         p_socket_free(server->listener_socket);
         p_socket_address_free(server->address);
         return FALSE;

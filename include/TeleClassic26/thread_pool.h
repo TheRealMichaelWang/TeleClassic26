@@ -32,19 +32,24 @@ typedef struct {
     tc_thread_pool_task_buf_t task_prio_buffer[3];
 
     PUThread *thread_buffer[TC_THREADS_MAX_THREADS];
-    psize num_threads;
+
+    const pchar* round_robin_pattern;
 
     PMutex *lock;
     PCondVariable *not_empty;
     
+    psize num_threads;
+    psize round_robin_index;
     pint active_threads;
     pboolean shutdown;
 } tc_thread_pool_t;
 
 // Initialize the thread pool
 // - return: TRUE if the thread pool was initialized, FALSE otherwise
+// - round_robin_pattern: the pattern to use for round robin scheduling (i.e "AABAABC")
 // - reserved_threads: number of threads to reserve for other purposes outside of the thread pool
-pboolean tc_thread_pool_init(tc_thread_pool_t *pool, psize reserved_threads);
+// NOTE: round_robin_pattern must be a cstring consisting of the characters 'A'=high, 'B'=medium, and 'C'=low
+pboolean tc_thread_pool_init(tc_thread_pool_t *pool, const pchar* round_robin_pattern, psize reserved_threads);
 
 // Finalize the thread pool
 // - waits for the thread pool to be stopped

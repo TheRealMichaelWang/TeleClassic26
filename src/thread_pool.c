@@ -68,11 +68,25 @@ static tc_thread_pool_context_t task_buffer_dequeue(tc_thread_pool_task_buf_t *t
 
 // dequeue a task from the thread pool; searches from highest priority to lowest 
 static tc_thread_pool_context_t task_pool_dequeue(tc_thread_pool_t *pool) {
-    for (pint i = 0; i < TC_THREAD_POOL_MAX_PRIORITY; i++) {
-        if (!task_buffer_is_empty(&pool->task_prio_buffer[i])) {
-            return task_buffer_dequeue(&pool->task_prio_buffer[i]);
-        }
+    // get the current buffer to dequeue from
+    pchar current_buffer = pool->round_robin_pattern[pool->round_robin_index];
+    if (current_buffer == 0) { // if the pattern is exhausted, reset the index
+        pool->round_robin_index = 0;
+        current_buffer = pool->round_robin_pattern[pool->round_robin_index];
     }
+    pool->round_robin_index++;
+
+    pint current_buffer_index = current_buffer - 'A';
+
+    for (pint i = 0; i < TC_THREAD_POOL_MAX_PRIORITY; i++) {
+        if (!task_buffer_is_empty(&pool->task_prio_buffer[current_buffer_index])) {
+            return task_buffer_dequeue(&pool->task_prio_buffer[current_buffer_index]);
+        }
+        current_buffer_index += 1;
+        current_buffer_index %= TC_THREAD_POOL_MAX_PRIORITY;
+    }
+
+    // should never happen
     return (tc_thread_pool_context_t){.func = NULL, .arg = NULL, .priority = TC_THREAD_POOL_TASK_PRIORITY_LOW};
 }
 
@@ -109,7 +123,7 @@ static void* thread_pool_worker(void *arg) {
 }
 
 // initialize the thread pool
-pboolean tc_thread_pool_init(tc_thread_pool_t *pool, psize reserved_threads) {
+pboolean tc_thread_pool_init(tc_thread_pool_t *pool, const pchar* round_robin_pattern, psize reserved_threads) {
     pint num_threads = p_uthread_ideal_count();
     if (reserved_threads >= num_threads) {
         return FALSE;
@@ -120,6 +134,8 @@ pboolean tc_thread_pool_init(tc_thread_pool_t *pool, psize reserved_threads) {
     }
 
     pool->num_threads = num_threads;
+    pool->round_robin_pattern = round_robin_pattern;
+    pool->round_robin_index = 0;
     pool->lock = p_mutex_new();
     if (pool->lock == NULL) {
         return FALSE;
@@ -234,7 +250,7 @@ void tc_thread_schedule_next(
         pool, 
         &pool->task_prio_buffer[current_priority], 
         &task, 
-        FALSE
+        TRUE
     );
     TC_ASSERT(enqueue_success, "Failed to enqueue next task in task chain");
 
