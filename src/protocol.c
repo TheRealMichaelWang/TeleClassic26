@@ -27,7 +27,7 @@ static pboolean send_string(PSocket* socket, const pchar str[]) {
         current++;
     }
     for (psize i = current - str; i < TC_PROTOCOL_MAX_STR_LEN; i++) {
-        buffer[i] = '\0';
+        buffer[i] = 0x20;
     }
 
     PError *error = NULL;
