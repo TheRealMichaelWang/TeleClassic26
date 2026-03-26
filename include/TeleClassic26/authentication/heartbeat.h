@@ -4,7 +4,7 @@
 #include <plibsys.h>
 
 #define TC_HEARTBEAT_SALT_LENGTH 16
-#define TC_URL_BUFFER_SIZE 128
+#define TC_URL_BUFFER_SIZE 256
 
 typedef struct tc_heartbeat_info {
     pint port;

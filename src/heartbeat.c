@@ -21,15 +21,12 @@ static void* heartbeat_worker(void* arg) {
                 p_free(manager->services[i].web_play_url);
                 manager->services[i].web_play_url = NULL;
             }
-            pboolean success = tc_heartbeat_send_info(
+            tc_heartbeat_send_info(
                 &manager->services[i],
                 p_atomic_int_get(manager->active_players),
                 &manager->info,
                 manager->services[i].current_salt
             );
-            if (!success) {
-                log_error("Failed to send heartbeat to %s:%d", manager->services[i].hostname, manager->services[i].port);
-            }
         }
         p_tree_clear(manager->auth_tree);
 
@@ -217,7 +214,7 @@ pboolean tc_heartbeat_send_info(
     const char* scheme = service->use_https ? "https" : "http";
     curl_url_set(url, CURLUPART_SCHEME, scheme, 0);
     curl_url_set(url, CURLUPART_HOST, service->hostname, 0);
-    curl_url_set(url, CURLUPART_PATH, "/heartbeat", 0);
+    curl_url_set(url, CURLUPART_PATH, "/server/heartbeat/", 0);
 
     char http_port_str[6];
     snprintf(http_port_str, sizeof(http_port_str), "%d", service->port);
@@ -286,16 +283,26 @@ pboolean tc_heartbeat_send_info(
     curl_free(full_url_str);
 
     if (res != CURLE_OK) {
+        log_error("Failed to send heartbeat to %s:%d: %s", service->hostname, service->port, curl_easy_strerror(res));
         return FALSE;
     }
 
-    service->web_play_url = p_malloc(hb_data.size + 1);
-    if (P_UNLIKELY(service->web_play_url == NULL)) {
+    long http_code = 0;
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
+    if (http_code != 200) {
+        log_error("Failed to send heartbeat to %s:%d: %ld. Response: %s", service->hostname, service->port, http_code, hb_data.response);
         return FALSE;
     }
 
-    memcpy(service->web_play_url, hb_data.response, hb_data.size);
-    service->web_play_url[hb_data.size] = '\0';
+    if (info->allow_web_play) {
+        service->web_play_url = p_malloc(hb_data.size + 1);
+        if (P_UNLIKELY(service->web_play_url == NULL)) {
+            return FALSE;
+        }
+
+        memcpy(service->web_play_url, hb_data.response, hb_data.size);
+        service->web_play_url[hb_data.size] = '\0';
+    }
 
     return TRUE;
 }
