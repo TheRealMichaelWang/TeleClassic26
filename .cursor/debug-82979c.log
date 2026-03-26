@@ -1,0 +1,4 @@
+{"sessionId":"82979c","runId":"pre-fix","timestamp":1774502123000,"location":"main.c:after_logs_dir","message":"logs dir setup","hypothesisId":"B,E","data":{"dir_create_ran":0,"dir_create_ok":-1,"logs_exists":1,"cwd":"/Users/michaelwang/Documents/TeleClassic26/build/bin"}}
+{"sessionId":"82979c","runId":"pre-fix","timestamp":1774502123000,"location":"main.c:localtime","message":"localtime result","hypothesisId":"A","data":{"now_tm_null":0}}
+{"sessionId":"82979c","runId":"pre-fix","timestamp":1774502123000,"location":"main.c:before_fopen","message":"opening path","hypothesisId":"C,D","data":{"path":"logs/2026-3-25.log"}}
+{"sessionId":"82979c","runId":"post-fix","timestamp":1774502123000,"location":"main.c:fopen_ok","message":"fopen succeeded","hypothesisId":"D","data":{}}

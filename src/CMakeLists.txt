@@ -5,6 +5,7 @@ add_executable(${PROJECT_NAME}
     protocol.c
     heartbeat.c
     utils.c
+    log.c
 )
 
 target_include_directories(${PROJECT_NAME} PRIVATE

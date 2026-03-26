@@ -6,6 +6,7 @@
 #include <TeleClassic26/authentication/heartbeat.h>
 #include <TeleClassic26/networking/protocol.h>
 #include <TeleClassic26/utils.h>
+#include <TeleClassic26/log.h>
 
 // manager must be locked before calling this function
 static void* heartbeat_worker(void* arg) {
@@ -14,17 +15,21 @@ static void* heartbeat_worker(void* arg) {
     p_mutex_lock(manager->lock);
     while (!manager->shutdown) {
         for (pint i = 0; i < manager->num_services; i++) {
+            log_info("Sending heartbeat to %s:%d", manager->services[i].hostname, manager->services[i].port);
             heartbeat_generate_salt(manager->services[i].current_salt);
             if (manager->services[i].web_play_url) {
                 p_free(manager->services[i].web_play_url);
                 manager->services[i].web_play_url = NULL;
             }
-            tc_heartbeat_send_info(
+            pboolean success = tc_heartbeat_send_info(
                 &manager->services[i],
                 p_atomic_int_get(manager->active_players),
                 &manager->info,
                 manager->services[i].current_salt
             );
+            if (!success) {
+                log_error("Failed to send heartbeat to %s:%d", manager->services[i].hostname, manager->services[i].port);
+            }
         }
         p_tree_clear(manager->auth_tree);
 
