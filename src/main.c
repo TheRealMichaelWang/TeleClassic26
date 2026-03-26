@@ -2,6 +2,7 @@
 #include <curl/curl.h>
 #include <TeleClassic26/version.h>
 #include <TeleClassic26/networking/server.h>
+#include <stdio.h>
 
 tc_heartbeat_service_t heartbeat_services[] = {
     {
@@ -28,24 +29,31 @@ pboolean run_server(void) {
     int init_success = tc_server_init(
         server, 
         "0.0.0.0", 
-        8080, 128, 16, 
+        8080, 128, 2, 
         heartbeat_services, 
         sizeof(heartbeat_services) / sizeof(tc_heartbeat_service_t), 
         heartbeat_info
     );
+    printf("Server initialized\n");
     if (!init_success) {
-        tc_server_finalize(server);
+        printf("Failed to initialize server\n");
         p_free(server);
         return FALSE;
     }
     if (!tc_server_start(server)) {
+        printf("Failed to start server\n");
         tc_server_finalize(server);
         p_free(server);
         return FALSE;
     }
 
+    printf("Server started\n");
+    p_uthread_sleep(5000); // 5 seconds
+
     tc_server_finalize(server);
     p_free(server);
+
+    printf("Server finalized\n");
     return TRUE;
 }
 

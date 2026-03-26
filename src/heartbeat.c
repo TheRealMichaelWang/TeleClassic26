@@ -10,11 +10,9 @@
 // manager must be locked before calling this function
 static void* heartbeat_worker(void* arg) {
     tc_heartbeat_manager_t* manager = (tc_heartbeat_manager_t*)arg;
-    p_cond_variable_wait(manager->start_signal, manager->lock);
 
+    p_mutex_lock(manager->lock);
     while (!manager->shutdown) {
-        // lock the manager to prevent race conditions
-        p_mutex_lock(manager->lock);
         for (pint i = 0; i < manager->num_services; i++) {
             heartbeat_generate_salt(manager->services[i].current_salt);
             if (manager->services[i].web_play_url) {
@@ -29,10 +27,12 @@ static void* heartbeat_worker(void* arg) {
             );
         }
         p_tree_clear(manager->auth_tree);
-        p_mutex_unlock(manager->lock);
 
-        p_uthread_sleep(45000000); // 45 seconds
+        p_mutex_unlock(manager->lock);
+        p_uthread_sleep(45000); // 45 seconds
+        p_mutex_lock(manager->lock);
     }
+    p_mutex_unlock(manager->lock);
     return NULL;
 }
 
@@ -55,12 +55,6 @@ pboolean heartbeat_manager_init(
         return FALSE;
     }
 
-    manager->start_signal = p_cond_variable_new();
-    if (P_UNLIKELY(manager->start_signal == NULL)) {
-        p_mutex_free(manager->lock);
-        return FALSE;
-    }
-
     manager->auth_tree = p_tree_new_full(
         P_TREE_TYPE_AVL, 
         tc_string_compare,
@@ -69,21 +63,7 @@ pboolean heartbeat_manager_init(
         NULL
     );
     if (P_UNLIKELY(manager->auth_tree == NULL)) {
-        p_cond_variable_free(manager->start_signal);
         p_mutex_free(manager->lock);
-        return FALSE;
-    }
-
-    manager->heartbeat_thread = p_uthread_create(
-        heartbeat_worker, 
-        manager, 
-        TRUE, 
-        NULL
-    );
-    if (P_UNLIKELY(manager->heartbeat_thread == NULL)) {
-        p_cond_variable_free(manager->start_signal);
-        p_mutex_free(manager->lock);
-        p_tree_free(manager->auth_tree);
         return FALSE;
     }
 
@@ -91,6 +71,21 @@ pboolean heartbeat_manager_init(
     for (pint i = 0; i < manager->num_services; i++) {
         manager->services[i].web_play_url = NULL;
     }
+
+    p_mutex_lock(manager->lock);
+    manager->heartbeat_thread = p_uthread_create(
+        heartbeat_worker, 
+        manager, 
+        TRUE, 
+        NULL
+    );
+    if (P_UNLIKELY(manager->heartbeat_thread == NULL)) {
+        p_mutex_unlock(manager->lock);
+        p_mutex_free(manager->lock);
+        p_tree_free(manager->auth_tree);
+        return FALSE;
+    }
+
     return TRUE;
 }
 
@@ -98,7 +93,6 @@ pboolean heartbeat_manager_init(
 void tc_heartbeat_manager_finalize(tc_heartbeat_manager_t* manager) {
     p_uthread_join(manager->heartbeat_thread);
     p_uthread_unref(manager->heartbeat_thread);
-    p_cond_variable_free(manager->start_signal);
     p_tree_free(manager->auth_tree);
     p_mutex_free(manager->lock);
 
@@ -120,13 +114,13 @@ void heartbeat_generate_salt(pchar salt[TC_HEARTBEAT_SALT_LENGTH]) {
 
 // Starts the heartbeat manager
 void tc_heartbeat_manager_start(tc_heartbeat_manager_t* manager) {
-    p_cond_variable_signal(manager->start_signal);
+    p_mutex_unlock(manager->lock);
 }
 
 // Stops the heartbeat manager
 void tc_heartbeat_manager_stop(tc_heartbeat_manager_t* manager) {
     manager->shutdown = TRUE;
-    p_cond_variable_signal(manager->start_signal);
+    p_mutex_unlock(manager->lock);
 }
 
 // Validates the username with the given key

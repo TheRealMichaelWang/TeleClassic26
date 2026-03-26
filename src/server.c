@@ -304,7 +304,7 @@ static void listener_worker_task(void *arg, tc_thread_pool_task_priority_t prior
     tc_thread_schedule_next(
         &server->thread_pool,
         listener_worker_task,
-        tc_server_shutdown_client_task,
+        NULL,
         server,
         priority
     );

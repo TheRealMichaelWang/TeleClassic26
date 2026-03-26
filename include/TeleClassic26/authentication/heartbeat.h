@@ -46,7 +46,6 @@ typedef struct tc_heartbeat_manager {
     tc_heartbeat_service_t* services;
     PUThread* heartbeat_thread;
     PMutex* lock;
-    PCondVariable* start_signal;
     PTree* auth_tree; //stores all used keys for the current heartbeat cycle
 
     pint num_services;
