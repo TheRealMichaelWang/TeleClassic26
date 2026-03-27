@@ -15,7 +15,6 @@ static void* heartbeat_worker(void* arg) {
     p_mutex_lock(manager->lock);
     while (!manager->shutdown) {
         for (pint i = 0; i < manager->num_services; i++) {
-            log_info("Sending heartbeat to %s:%d", manager->services[i].hostname, manager->services[i].port);
             heartbeat_generate_salt(manager->services[i].current_salt);
             if (manager->services[i].web_play_url) {
                 p_free(manager->services[i].web_play_url);
@@ -31,7 +30,7 @@ static void* heartbeat_worker(void* arg) {
         p_tree_clear(manager->auth_tree);
 
         p_mutex_unlock(manager->lock);
-        p_uthread_sleep(45000); // 45 seconds
+        p_uthread_sleep(15000); // 45 seconds
         p_mutex_lock(manager->lock);
     }
     p_mutex_unlock(manager->lock);
@@ -46,6 +45,8 @@ pboolean heartbeat_manager_init(
     volatile pint* active_players,
     pint num_services
 ) {
+    log_info("Initializing heartbeat manager...");
+
     manager->info = info;
     manager->services = services;
     manager->num_services = num_services;
@@ -82,10 +83,21 @@ pboolean heartbeat_manager_init(
         NULL
     );
     if (P_UNLIKELY(manager->heartbeat_thread == NULL)) {
+        log_error("Failed to create heartbeat thread");
         p_mutex_unlock(manager->lock);
         p_mutex_free(manager->lock);
         p_tree_free(manager->auth_tree);
         return FALSE;
+    }
+
+    log_info("Heartbeat manager initialized successfully");
+    for (pint i = 0; i < manager->num_services; i++) {
+        log_info("Heartbeat service %d: %s:%d (https: %s)", 
+            i + 1, 
+            manager->services[i].hostname, 
+            manager->services[i].port,
+            manager->services[i].use_https ? "True" : "False"
+        );
     }
 
     return TRUE;
@@ -93,6 +105,8 @@ pboolean heartbeat_manager_init(
 
 // Finalizes the heartbeat manager
 void tc_heartbeat_manager_finalize(tc_heartbeat_manager_t* manager) {
+    log_info("Finalizing heartbeat manager...");
+
     p_uthread_join(manager->heartbeat_thread);
     p_uthread_unref(manager->heartbeat_thread);
     p_tree_free(manager->auth_tree);
@@ -141,6 +155,7 @@ tc_heartbeat_service_t* tc_heartbeat_manager_validate(
 
     // prevent "double tap" authentication attacks
     if (p_tree_lookup(manager->auth_tree, (ppointer)key) != NULL) {
+        log_warn("Double tap/replay authentication attack detected for username: %s", username);
         p_mutex_unlock(manager->lock);
         return NULL;
     }
@@ -163,6 +178,7 @@ tc_heartbeat_service_t* tc_heartbeat_manager_validate(
 
         psize hex_len = strlen(hex);
         if (strncmp(key, hex, hex_len) == 0) {
+            log_info("Authentication successful for username: %s", username);
             p_tree_insert(manager->auth_tree, hex, (ppointer)&manager->services[i]);
             p_mutex_unlock(manager->lock);
             return &manager->services[i];
@@ -170,6 +186,7 @@ tc_heartbeat_service_t* tc_heartbeat_manager_validate(
         p_free(hex);
     }
 
+    log_warn("Authentication failed for username: %s", username);
     p_mutex_unlock(manager->lock);
     return NULL;
 }
@@ -200,6 +217,8 @@ pboolean tc_heartbeat_send_info(
     const tc_heartbeat_info_t* info,
     const pchar salt[TC_HEARTBEAT_SALT_LENGTH]
 ) {
+    log_info("Sending heartbeat to %s:%d", service->hostname, service->port);
+
     CURL* curl = curl_easy_init();
     if (P_UNLIKELY(curl == NULL)) {
         return FALSE;

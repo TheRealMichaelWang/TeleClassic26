@@ -3,6 +3,7 @@
 #include "TeleClassic26/thread_pool.h"
 #include <plibsys.h>
 #include <TeleClassic26/networking/server.h>
+#include <TeleClassic26/log.h>
 
 pboolean tc_server_init(
     tc_server_t *server, 
@@ -14,13 +15,17 @@ pboolean tc_server_init(
     pint num_heartbeat_services,
     tc_heartbeat_info_t heartbeat_info
 ) {
+    log_info("Initializing server...");
+
     server->address = p_socket_address_new(hostname, port);
     if (server->address == NULL) {
+        log_error("Failed to create socket address at %s:%d", hostname, port);
         return FALSE;
     }
 
     server->listener_socket = p_socket_new(P_SOCKET_FAMILY_INET, P_SOCKET_TYPE_STREAM, P_SOCKET_PROTOCOL_TCP, NULL);
     if (server->listener_socket == NULL) {
+        log_error("Failed to create listener socket");
         p_socket_address_free(server->address);
         return FALSE;
     }
@@ -30,12 +35,14 @@ pboolean tc_server_init(
     p_socket_set_timeout(server->listener_socket, 50);
 
     if (!p_socket_bind(server->listener_socket, server->address, FALSE, NULL)) {
+        log_error("Failed to bind listener socket");
         p_socket_free(server->listener_socket);
         p_socket_address_free(server->address);
         return FALSE;
     }
 
     if (!tc_thread_pool_init(&server->thread_pool, "AABAABC", reserved_threads)) {
+        log_error("Failed to initialize thread pool");
         p_socket_free(server->listener_socket);
         p_socket_address_free(server->address);
         return FALSE;
@@ -48,6 +55,7 @@ pboolean tc_server_init(
         &server->active_players,
         num_heartbeat_services
     )) {
+        log_error("Failed to initialize heartbeat manager");
         tc_thread_pool_stop(&server->thread_pool);
         tc_thread_pool_finalize(&server->thread_pool);
         p_socket_free(server->listener_socket);
@@ -61,19 +69,18 @@ pboolean tc_server_init(
         server->id_buffer[i] = i;
     }
     server->id_buffer_head = 0;
-
     server->active_players = 0;
 
+    log_info("Server initialized successfully");
     return TRUE;
 }
 
 void tc_server_finalize(tc_server_t *server) {
+    log_info("Finalizing server...");
+
     if (server->started) {
         tc_server_stop(server);
     }
-
-    tc_thread_pool_finalize(&server->thread_pool);
-    tc_heartbeat_manager_finalize(&server->heartbeat_manager);
 
     if (server->started) {
         p_socket_close(server->listener_socket, NULL);
@@ -81,9 +88,19 @@ void tc_server_finalize(tc_server_t *server) {
     p_socket_address_free(server->address);
     p_socket_free(server->listener_socket);
     p_mutex_free(server->lock);
+
+    tc_thread_pool_finalize(&server->thread_pool);
+    tc_heartbeat_manager_finalize(&server->heartbeat_manager);
 }
 
 static void disconnect_session(tc_session_t* session) {
+    log_info(
+        "Disconnecting session %d (username: %s)...", 
+        session->id, 
+        session->username,
+        session->authenticated_service ? session->authenticated_service->hostname : "N/A"
+    );
+
     // free the pending packet buffer
     if (session->pending_packet_buffer) {
         p_free(session->pending_packet_buffer);
@@ -115,6 +132,11 @@ static void disconnect_session(tc_session_t* session) {
 // kicks a session from the server
 void tc_server_kick_session(tc_session_t* session, const char* msg) {
     if (msg) {
+        log_info(
+            "Kicking session %d (username: %s)", 
+            session->id, 
+            session->authenticated_service ? session->username : "N/A"
+        );
         tc_protocol_kick(session->client_socket, msg);
     }
     disconnect_session(session);
@@ -286,6 +308,7 @@ static void handle_new_session(tc_server_t* server, PSocket* client_socket) {
         TC_THREAD_POOL_TASK_PRIORITY_LOW
     );
     if (!schedule_success) {
+        log_warn("Task pool is busy, failed to accomodate new client.");
         tc_server_kick_session(session, "Server is Busy: Please try again or come back soon.");
     }
 }
@@ -312,12 +335,15 @@ static void listener_worker_task(void *arg, tc_thread_pool_task_priority_t prior
 }
 
 pboolean tc_server_start(tc_server_t *server) {
+    log_info("Starting server...");
+    
     if (server->started) {
         return FALSE;
     }
 
     pboolean listen_success = p_socket_listen(server->listener_socket, NULL);
     if (!listen_success) {
+        log_error("Failed to listen on socket");
         return FALSE;
     }
 
@@ -328,6 +354,7 @@ pboolean tc_server_start(tc_server_t *server) {
         TC_THREAD_POOL_TASK_PRIORITY_HIGH
     );
     if (!schedule_success) {
+        log_error("Failed to schedule listener worker task");
         p_socket_close(server->listener_socket, NULL);
         return FALSE;
     }

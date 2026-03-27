@@ -37,8 +37,6 @@ pboolean run_server(void) {
         sizeof(heartbeat_services) / sizeof(tc_heartbeat_service_t), 
         heartbeat_info
     );
-
-    log_info("Server initialized");
     if (!init_success) {
         log_fatal("Failed to initialize server");
         p_free(server);
@@ -60,6 +58,10 @@ pboolean run_server(void) {
 
     log_info("Server finalized");
     return TRUE;
+}
+
+static ppointer p_calloc_wrapper(psize nmemb, psize size) {
+    return p_malloc0(nmemb * size);
 }
 
 int main(void)
@@ -101,7 +103,14 @@ int main(void)
 
     log_info("Initializing...");
     p_libsys_init();
-    curl_global_init(CURL_GLOBAL_ALL);
+    curl_global_init_mem(
+        CURL_GLOBAL_ALL,
+        p_malloc,
+        p_free,
+        p_realloc,
+        p_strdup,
+        p_calloc_wrapper    
+    );
 
     pboolean server_success = run_server();
 

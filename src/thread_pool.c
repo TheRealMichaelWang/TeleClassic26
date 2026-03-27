@@ -1,6 +1,7 @@
 #include "plibsys.h"
 #include <TeleClassic26/thread_pool.h>
 #include <TeleClassic26/utils.h>
+#include <TeleClassic26/log.h>
 
 // initialize a task buffer
 static void init_task_buffer(tc_thread_pool_task_buf_t *task_buf) {
@@ -126,6 +127,7 @@ static void* thread_pool_worker(void *arg) {
 pboolean tc_thread_pool_init(tc_thread_pool_t *pool, const pchar* round_robin_pattern, psize reserved_threads) {
     pint num_threads = p_uthread_ideal_count();
     if (reserved_threads >= num_threads) {
+        log_error("Failed to initialize thread pool: reserved threads (%d) is greater than or equal to ideal threads (%d)", reserved_threads, num_threads);
         return FALSE;
     }
     num_threads -= reserved_threads;
@@ -133,6 +135,8 @@ pboolean tc_thread_pool_init(tc_thread_pool_t *pool, const pchar* round_robin_pa
         num_threads = TC_THREADS_MAX_THREADS;
     }
 
+    log_info("Initializing thread pool with %d threads (system has %d ideal threads)", num_threads, p_uthread_ideal_count());
+    
     pool->num_threads = num_threads;
     pool->round_robin_pattern = round_robin_pattern;
     pool->round_robin_index = 0;
@@ -151,12 +155,14 @@ pboolean tc_thread_pool_init(tc_thread_pool_t *pool, const pchar* round_robin_pa
     for (int i = 0; i < TC_THREAD_POOL_MAX_PRIORITY; i++) {
         init_task_buffer(&pool->task_prio_buffer[i]);
     }
+    log_info("Creating %d worker threads...", num_threads);
     for (pint i = 0; i < num_threads; i++) {
+        log_info("Creating worker thread %d...", i + 1);
         pool->thread_buffer[i] = p_uthread_create(
             thread_pool_worker, 
             pool, 
             TRUE, 
-            "TC26 Thread Pool Worker"
+            NULL
         );
         if (pool->thread_buffer[i] == NULL) {
             p_mutex_free(pool->lock);
@@ -174,10 +180,13 @@ pboolean tc_thread_pool_init(tc_thread_pool_t *pool, const pchar* round_robin_pa
 // finalize the thread pool
 void tc_thread_pool_finalize(tc_thread_pool_t *pool) {
     // wait for all worker threads to finish
+    log_info("Waiting for %d worker threads to finish...", pool->num_threads);
     for (pint i = 0; i < pool->num_threads; i++) {
         // wait for worker thread i to finish
+        log_info("Waiting for worker thread %d to finish...", i + 1);
         p_uthread_join(pool->thread_buffer[i]); 
         p_uthread_unref(pool->thread_buffer[i]);
+        log_info("Worker thread %d finished", i + 1);
     }
 
     p_mutex_free(pool->lock);
@@ -185,6 +194,8 @@ void tc_thread_pool_finalize(tc_thread_pool_t *pool) {
 }
 
 void tc_thread_pool_stop(tc_thread_pool_t *pool) {
+    log_info("Stopping thread pool...");
+    
     p_mutex_lock(pool->lock);
 
     pool->shutdown = TRUE;
