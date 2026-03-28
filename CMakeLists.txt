@@ -21,5 +21,14 @@ set(CURL_ZSTD OFF CACHE BOOL "" FORCE)
 set(CURL_BROTLI OFF CACHE BOOL "" FORCE)
 add_subdirectory(curl-master)
 
+# zlib (vendored)
+set(ZLIB_BUILD_TESTING OFF CACHE BOOL "" FORCE)
+set(ZLIB_INSTALL OFF CACHE BOOL "" FORCE)
+add_subdirectory(zlib)
+
+# cNBT (vendored)
+set(CNBT_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+add_subdirectory(cNBT)
+
 # TeleClassic26
 add_subdirectory(src)

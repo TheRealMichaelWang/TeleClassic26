@@ -49,14 +49,10 @@ pboolean run_server(void) {
         return FALSE;
     }
 
-    log_info("Server started");
-
-    p_uthread_sleep(5000);
+    p_uthread_sleep(15000);
 
     tc_server_finalize(server);
     p_free(server);
-
-    log_info("Server finalized");
     return TRUE;
 }
 
