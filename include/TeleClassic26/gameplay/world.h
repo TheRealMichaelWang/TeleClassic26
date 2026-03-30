@@ -1,8 +1,0 @@
-#ifndef TELECLASSIC26_GAMEPLAY_WORLD_H
-#define TELECLASSIC26_GAMEPLAY_WORLD_H
-
-#include <plibsys.h>
-
-
-
-#endif /* TELECLASSIC26_GAMEPLAY_WORLD_H */

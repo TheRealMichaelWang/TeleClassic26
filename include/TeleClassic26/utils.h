@@ -4,6 +4,8 @@
 #include <plibsys.h>
 #include <assert.h>
 
+#define TC_THREADS_UUID_LEN 16
+
 #define TC_ASSERT(condition, MSG) assert(condition)
 
 // Compares two strings

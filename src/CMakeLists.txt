@@ -6,11 +6,11 @@ add_executable(${PROJECT_NAME}
     heartbeat.c
     utils.c
     log.c
+    world.c
 )
 
 target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_SOURCE_DIR}/include
-    ${CMAKE_SOURCE_DIR}/cNBT
 )
 
 target_link_libraries(${PROJECT_NAME} PRIVATE plibsys libcurl nbt ZLIB::ZLIB)
