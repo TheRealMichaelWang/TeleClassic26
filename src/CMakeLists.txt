@@ -6,7 +6,7 @@ add_executable(${PROJECT_NAME}
     heartbeat.c
     utils.c
     log.c
-    world.c
+    map.c
 )
 
 target_include_directories(${PROJECT_NAME} PRIVATE

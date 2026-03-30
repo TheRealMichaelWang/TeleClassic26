@@ -104,7 +104,7 @@ typedef struct tc_map {
 void tc_map_generate(tc_map_t *map, const pchar* name, pshort x_size, pshort y_size, pshort z_size, tc_map_generation_mode_t generation_mode);
 void tc_map_finalize(tc_map_t *map);
 
-void tc_map_load(tc_map_t *map, const pchar *path);
-void tc_map_save(tc_map_t *map, const pchar *path);
+pboolean tc_map_load(tc_map_t *map, const pchar *path);
+pboolean tc_map_save(tc_map_t *map, const pchar *path);
 
 #endif /* TELECLASSIC26_GAMEPLAY_MAP_H */
