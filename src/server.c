@@ -196,6 +196,11 @@ void tc_server_client_listen_task(void *arg, tc_thread_pool_task_priority_t prio
             // validate the packet opcode
             if (session->pending_packet_opcode < 0 || session->pending_packet_opcode >= TC_PROTOCOL_TOTAL_PACKETS) {
                 p_error_free(error);
+                tc_server_kick_session(session, "Packet Opcode Out of Range: Please reconnect.");
+                return;
+            }
+            if (tc_protocol_packet_handlers[session->pending_packet_opcode] == NULL) {
+                p_error_free(error);
                 tc_server_kick_session(session, "Invalid Packet Opcode: Please reconnect.");
                 return;
             }

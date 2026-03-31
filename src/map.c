@@ -130,12 +130,12 @@ static void free_block_definition(ppointer data, ppointer user_data) {
 }
 
 void tc_map_finalize(tc_map_t *map) {
-    p_free(map->name);
-    p_free(map->created_by_service);
-    p_free(map->created_by_username);
-    p_free(map->map_gen_software);
-    p_free(map->map_gen_name);
-    p_free(map->block_array);
+    if (map->name) { p_free(map->name); }
+    if (map->created_by_service) { p_free(map->created_by_service); }
+    if (map->created_by_username) { p_free(map->created_by_username); }
+    if (map->map_gen_software) { p_free(map->map_gen_software); }
+    if (map->map_gen_name) { p_free(map->map_gen_name); }
+    if (map->block_array) { p_free(map->block_array); }
 
     if (map->custom_blocks_extension) {
         p_free(map->custom_blocks_extension->fallback_blocks);
@@ -233,6 +233,8 @@ pboolean tc_map_load(tc_map_t *map, const pchar *path)
     n = nbt_find_by_path(root, "ClassicWorld.BlockArray");
     if (n) {
         int32_t len = n->payload.tag_byte_array.length;
+        if (len != map->x_size * map->y_size * map->z_size) { goto fail; }
+
         map->block_array = (pchar *)p_malloc((psize)len);
         if (!map->block_array) { goto fail; }
         memcpy(map->block_array, n->payload.tag_byte_array.data, (size_t)len);
