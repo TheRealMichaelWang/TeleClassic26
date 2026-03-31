@@ -79,16 +79,32 @@ static nbt_node *nbt_make_byte_array(const char *name, const void *data, int32_t
     return n;
 }
 
-/* Color config load/save helpers */
+/* Finds a named child and validates its type. Returns the node if found
+ * with the correct type, NULL if missing or type mismatch. */
+static nbt_node *nbt_expect(nbt_node *parent, const char *name, nbt_type type)
+{
+    nbt_node *n = nbt_find_by_name(parent, name);
+    if (n && n->type != type) { return NULL; }
+    return n;
+}
 
-static void load_color(nbt_node *parent, const char *tag, tc_map_color_config_t *c)
+/* ── Color config load/save helpers ─────────────────────────────────── */
+
+/* Returns TRUE if the color compound is absent (optional) or valid.
+ * Returns FALSE if present but malformed. */
+static pboolean load_color(nbt_node *parent, const char *tag, tc_map_color_config_t *c)
 {
     nbt_node *compound = nbt_find_by_name(parent, tag);
-    if (!compound) { return; }
-    nbt_node *n;
-    n = nbt_find_by_name(compound, "R"); if (n) { c->red   = n->payload.tag_short; }
-    n = nbt_find_by_name(compound, "G"); if (n) { c->green = n->payload.tag_short; }
-    n = nbt_find_by_name(compound, "B"); if (n) { c->blue  = n->payload.tag_short; }
+    if (!compound) { return TRUE; }
+    if (compound->type != TAG_COMPOUND) { return FALSE; }
+    nbt_node *r = nbt_expect(compound, "R", TAG_SHORT);
+    nbt_node *g = nbt_expect(compound, "G", TAG_SHORT);
+    nbt_node *b = nbt_expect(compound, "B", TAG_SHORT);
+    if (!r || !g || !b) { return FALSE; }
+    c->red   = r->payload.tag_short;
+    c->green = g->payload.tag_short;
+    c->blue  = b->payload.tag_short;
+    return TRUE;
 }
 
 /* Returns FALSE on alloc failure. On failure the partially-built color
@@ -225,93 +241,113 @@ pboolean tc_map_load(tc_map_t *map, const pchar *path)
     /* CPE: CustomBlocks */
     nbt_node *ext = nbt_find_by_path(root, "ClassicWorld.Metadata.CPE.CustomBlocks");
     if (ext) {
+        if (ext->type != TAG_COMPOUND) { goto fail; }
         tc_map_custom_blocks_extension_t *cb = (tc_map_custom_blocks_extension_t *)
             p_malloc(sizeof(tc_map_custom_blocks_extension_t));
         if (!cb) { goto fail; }
         memset(cb, 0, sizeof(*cb));
         map->custom_blocks_extension = cb;
 
-        n = nbt_find_by_name(ext, "ExtensionVersion");
-        if (n) { cb->extension_version = n->payload.tag_int; }
-        n = nbt_find_by_name(ext, "SupportLevel");
-        if (n) { cb->support_level = n->payload.tag_short; }
-        n = nbt_find_by_name(ext, "Fallback");
-        if (n) {
-            cb->fallback_blocks = (pchar *)p_malloc((psize)n->payload.tag_byte_array.length);
-            if (!cb->fallback_blocks) { goto fail; }
-            memcpy(cb->fallback_blocks, n->payload.tag_byte_array.data,
-                   (size_t)n->payload.tag_byte_array.length);
-        }
+        n = nbt_expect(ext, "ExtensionVersion", TAG_INT);
+        if (!n) { goto fail; }
+        cb->extension_version = n->payload.tag_int;
+
+        n = nbt_expect(ext, "SupportLevel", TAG_SHORT);
+        if (!n) { goto fail; }
+        cb->support_level = n->payload.tag_short;
+
+        n = nbt_expect(ext, "Fallback", TAG_BYTE_ARRAY);
+        if (!n || n->payload.tag_byte_array.length != 256) { goto fail; }
+        cb->fallback_blocks = (pchar *)p_malloc(256);
+        if (!cb->fallback_blocks) { goto fail; }
+        memcpy(cb->fallback_blocks, n->payload.tag_byte_array.data, 256);
     }
 
     /* CPE: EnvColors */
     ext = nbt_find_by_path(root, "ClassicWorld.Metadata.CPE.EnvColors");
     if (ext) {
+        if (ext->type != TAG_COMPOUND) { goto fail; }
         tc_map_env_colors_extension_t *ec = (tc_map_env_colors_extension_t *)
             p_malloc(sizeof(tc_map_env_colors_extension_t));
         if (!ec) { goto fail; }
         memset(ec, 0, sizeof(*ec));
         map->env_colors_extension = ec;
 
-        n = nbt_find_by_name(ext, "ExtensionVersion");
-        if (n) { ec->extension_version = n->payload.tag_int; }
-        load_color(ext, "Sky",      &ec->sky);
-        load_color(ext, "Cloud",    &ec->cloud);
-        load_color(ext, "Fog",      &ec->fog);
-        load_color(ext, "Ambient",  &ec->ambient);
-        load_color(ext, "Sunlight", &ec->sunlight);
+        n = nbt_expect(ext, "ExtensionVersion", TAG_INT);
+        if (!n) { goto fail; }
+        ec->extension_version = n->payload.tag_int;
+
+        if (!load_color(ext, "Sky",      &ec->sky))      { goto fail; }
+        if (!load_color(ext, "Cloud",    &ec->cloud))    { goto fail; }
+        if (!load_color(ext, "Fog",      &ec->fog))      { goto fail; }
+        if (!load_color(ext, "Ambient",  &ec->ambient))  { goto fail; }
+        if (!load_color(ext, "Sunlight", &ec->sunlight)) { goto fail; }
     }
 
     /* CPE: EnvMapAppearance */
     ext = nbt_find_by_path(root, "ClassicWorld.Metadata.CPE.EnvMapAppearance");
     if (ext) {
+        if (ext->type != TAG_COMPOUND) { goto fail; }
         tc_map_env_appearance_extension_t *ea = (tc_map_env_appearance_extension_t *)
             p_malloc(sizeof(tc_map_env_appearance_extension_t));
         if (!ea) { goto fail; }
         memset(ea, 0, sizeof(*ea));
         map->env_appearance_extension = ea;
 
-        n = nbt_find_by_name(ext, "ExtensionVersion");
-        if (n) { ea->extension_version = n->payload.tag_int; }
-        n = nbt_find_by_name(ext, "TextureURL");
-        if (n) {
-            ea->texture_url = p_strdup(n->payload.tag_string);
-            if (!ea->texture_url) { goto fail; }
-        }
-        n = nbt_find_by_name(ext, "SideBlock");
-        if (n) { ea->side_block = n->payload.tag_byte; }
-        n = nbt_find_by_name(ext, "EdgeBlock");
-        if (n) { ea->edge_block = n->payload.tag_byte; }
-        n = nbt_find_by_name(ext, "SideLevel");
-        if (n) { ea->side_level = n->payload.tag_short; }
+        n = nbt_expect(ext, "ExtensionVersion", TAG_INT);
+        if (!n) { goto fail; }
+        ea->extension_version = n->payload.tag_int;
+
+        n = nbt_expect(ext, "TextureURL", TAG_STRING);
+        if (!n) { goto fail; }
+        ea->texture_url = p_strdup(n->payload.tag_string);
+        if (!ea->texture_url) { goto fail; }
+
+        n = nbt_expect(ext, "SideBlock", TAG_BYTE);
+        if (!n) { goto fail; }
+        ea->side_block = n->payload.tag_byte;
+
+        n = nbt_expect(ext, "EdgeBlock", TAG_BYTE);
+        if (!n) { goto fail; }
+        ea->edge_block = n->payload.tag_byte;
+
+        n = nbt_expect(ext, "SideLevel", TAG_SHORT);
+        if (!n) { goto fail; }
+        ea->side_level = n->payload.tag_short;
     }
 
     /* CPE: EnvWeatherType */
     ext = nbt_find_by_path(root, "ClassicWorld.Metadata.CPE.EnvWeatherType");
     if (ext) {
+        if (ext->type != TAG_COMPOUND) { goto fail; }
         tc_map_env_weather_extension_t *ew = (tc_map_env_weather_extension_t *)
             p_malloc(sizeof(tc_map_env_weather_extension_t));
         if (!ew) { goto fail; }
         memset(ew, 0, sizeof(*ew));
         map->env_weather_extension = ew;
 
-        n = nbt_find_by_name(ext, "ExtensionVersion");
-        if (n) { ew->extension_version = n->payload.tag_int; }
-        n = nbt_find_by_name(ext, "WeatherType");
-        if (n) { ew->weather_type = n->payload.tag_byte; }
+        n = nbt_expect(ext, "ExtensionVersion", TAG_INT);
+        if (!n) { goto fail; }
+        ew->extension_version = n->payload.tag_int;
+
+        n = nbt_expect(ext, "WeatherType", TAG_BYTE);
+        if (!n) { goto fail; }
+        ew->weather_type = n->payload.tag_byte;
     }
 
     /* CPE: BlockDefinitions */
     ext = nbt_find_by_path(root, "ClassicWorld.Metadata.CPE.BlockDefinitions");
-    if (ext && ext->type == TAG_COMPOUND) {
+    if (ext) {
+        if (ext->type != TAG_COMPOUND) { goto fail; }
         tc_map_block_definition_extension_t *bd = (tc_map_block_definition_extension_t *)
             p_malloc(sizeof(tc_map_block_definition_extension_t));
         if (!bd) { goto fail; }
         memset(bd, 0, sizeof(*bd));
         map->block_definition_extensions = bd;
 
-        n = nbt_find_by_name(ext, "ExtensionVersion");
-        if (n) { bd->extension_version = n->payload.tag_int; }
+        n = nbt_expect(ext, "ExtensionVersion", TAG_INT);
+        if (!n) { goto fail; }
+        bd->extension_version = n->payload.tag_int;
 
         struct list_head *pos;
         list_for_each(pos, &ext->payload.tag_compound->entry) {
@@ -336,35 +372,46 @@ pboolean tc_map_load(tc_map_t *map, const pchar *path)
             }
             bd->block_definitions = new_head;
 
-            n = nbt_find_by_name(child, "ID");
-            if (n) { def->block_id = n->payload.tag_byte; }
-            n = nbt_find_by_name(child, "Name");
-            if (n) {
-                def->block_name = p_strdup(n->payload.tag_string);
-                if (!def->block_name) { goto fail; }
-            }
-            n = nbt_find_by_name(child, "Speed");
-            if (n) { def->speed = n->payload.tag_float; }
-            n = nbt_find_by_name(child, "Textures");
-            if (n && n->payload.tag_byte_array.length >= 6) {
-                memcpy(def->textures, n->payload.tag_byte_array.data, 6);
-            }
-            n = nbt_find_by_name(child, "TransmitsLight");
-            if (n) { def->transmits_light = n->payload.tag_byte; }
-            n = nbt_find_by_name(child, "WalkSound");
-            if (n) { def->walk_sound = n->payload.tag_byte; }
-            n = nbt_find_by_name(child, "Shape");
-            if (n) { def->shape = n->payload.tag_byte; }
-            n = nbt_find_by_name(child, "BlockDraw");
-            if (n) { def->block_draw = n->payload.tag_byte; }
-            n = nbt_find_by_name(child, "Fog");
-            if (n && n->payload.tag_byte_array.length >= 4) {
-                memcpy(def->fog, n->payload.tag_byte_array.data, 4);
-            }
-            n = nbt_find_by_name(child, "Coords");
-            if (n && n->payload.tag_byte_array.length >= 6) {
-                memcpy(def->coords, n->payload.tag_byte_array.data, 6);
-            }
+            n = nbt_expect(child, "ID", TAG_BYTE);
+            if (!n) { goto fail; }
+            def->block_id = n->payload.tag_byte;
+
+            n = nbt_expect(child, "Name", TAG_STRING);
+            if (!n) { goto fail; }
+            def->block_name = p_strdup(n->payload.tag_string);
+            if (!def->block_name) { goto fail; }
+
+            n = nbt_expect(child, "Speed", TAG_FLOAT);
+            if (!n) { goto fail; }
+            def->speed = n->payload.tag_float;
+
+            n = nbt_expect(child, "Textures", TAG_BYTE_ARRAY);
+            if (!n || n->payload.tag_byte_array.length < 6) { goto fail; }
+            memcpy(def->textures, n->payload.tag_byte_array.data, 6);
+
+            n = nbt_expect(child, "TransmitsLight", TAG_BYTE);
+            if (!n) { goto fail; }
+            def->transmits_light = n->payload.tag_byte;
+
+            n = nbt_expect(child, "WalkSound", TAG_BYTE);
+            if (!n) { goto fail; }
+            def->walk_sound = n->payload.tag_byte;
+
+            n = nbt_expect(child, "Shape", TAG_BYTE);
+            if (!n) { goto fail; }
+            def->shape = n->payload.tag_byte;
+
+            n = nbt_expect(child, "BlockDraw", TAG_BYTE);
+            if (!n) { goto fail; }
+            def->block_draw = n->payload.tag_byte;
+
+            n = nbt_expect(child, "Fog", TAG_BYTE_ARRAY);
+            if (!n || n->payload.tag_byte_array.length < 4) { goto fail; }
+            memcpy(def->fog, n->payload.tag_byte_array.data, 4);
+
+            n = nbt_expect(child, "Coords", TAG_BYTE_ARRAY);
+            if (!n || n->payload.tag_byte_array.length < 6) { goto fail; }
+            memcpy(def->coords, n->payload.tag_byte_array.data, 6);
         }
 
         bd->block_definitions = p_list_reverse(bd->block_definitions);
