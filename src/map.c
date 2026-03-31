@@ -107,7 +107,6 @@ static pboolean save_color(nbt_node *parent, const char *tag, const tc_map_color
 }
 
 /* tc_map_finalize */
-
 static void free_block_definition(ppointer data, ppointer user_data) {
     tc_map_block_definition_t *block_definition = (tc_map_block_definition_t *)data;
     p_free(block_definition->block_name);
