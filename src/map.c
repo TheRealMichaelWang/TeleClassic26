@@ -4,6 +4,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <time.h>
 
 /* NBT tree builder helpers (stdlib allocators for nbt_free compat) */
 static nbt_node *nbt_make(nbt_type type, const char *name)
@@ -169,26 +170,28 @@ pboolean tc_map_load(tc_map_t *map, const pchar *path)
     memset(map, 0, sizeof(tc_map_t));
     nbt_node *n;
 
-    n = nbt_find_by_path(root, "ClassicWorld.FormatVersion");
-    if (n) { map->format_version = n->payload.tag_byte; }
+    n = nbt_expect(root, "ClassicWorld.FormatVersion", TAG_BYTE);
+    if (!n) { goto fail; }
+    map->format_version = n->payload.tag_byte;
 
-    n = nbt_find_by_path(root, "ClassicWorld.Name");
-    if (n) {
-        map->name = p_strdup(n->payload.tag_string);
-        if (!map->name) { goto fail; }
-    }
+    n = nbt_expect(root, "ClassicWorld.Name", TAG_STRING);
+    if (!n) { goto fail; }
+    map->name = p_strdup(n->payload.tag_string);
+    if (!map->name) { goto fail; }
 
-    n = nbt_find_by_path(root, "ClassicWorld.UUID");
-    if (n && n->payload.tag_byte_array.length >= TC_THREADS_UUID_LEN) {
-        memcpy(map->uuid, n->payload.tag_byte_array.data, TC_THREADS_UUID_LEN);
-    }
+    n = nbt_expect(root, "ClassicWorld.UUID", TAG_BYTE_ARRAY);
+    if (!n || n->payload.tag_byte_array.length != TC_THREADS_UUID_LEN) { goto fail; }
+    memcpy(map->uuid, n->payload.tag_byte_array.data, TC_THREADS_UUID_LEN);
 
-    n = nbt_find_by_path(root, "ClassicWorld.X");
-    if (n) { map->x_size = n->payload.tag_short; }
-    n = nbt_find_by_path(root, "ClassicWorld.Y");
-    if (n) { map->y_size = n->payload.tag_short; }
-    n = nbt_find_by_path(root, "ClassicWorld.Z");
-    if (n) { map->z_size = n->payload.tag_short; }
+    n = nbt_expect(root, "ClassicWorld.X", TAG_SHORT);
+    if (!n) { goto fail; }
+    map->x_size = n->payload.tag_short;
+    n = nbt_expect(root, "ClassicWorld.Y", TAG_SHORT);
+    if (!n) { goto fail; }
+    map->y_size = n->payload.tag_short;
+    n = nbt_expect(root, "ClassicWorld.Z", TAG_SHORT);
+    if (!n) { goto fail; }
+    map->z_size = n->payload.tag_short;
 
     n = nbt_find_by_path(root, "ClassicWorld.CreatedBy.Service");
     if (n) {
@@ -213,31 +216,44 @@ pboolean tc_map_load(tc_map_t *map, const pchar *path)
     }
 
     n = nbt_find_by_path(root, "ClassicWorld.TimeCreated");
-    if (n) { map->time_created = n->payload.tag_long; }
+    if (n) { map->time_created = n->payload.tag_long; } else { map->time_created = time(NULL); }
     n = nbt_find_by_path(root, "ClassicWorld.LastAccessed");
-    if (n) { map->last_accessed = n->payload.tag_long; }
+    if (n) { map->last_accessed = n->payload.tag_long; } else { map->last_accessed = time(NULL); }
     n = nbt_find_by_path(root, "ClassicWorld.LastModified");
-    if (n) { map->last_modified = n->payload.tag_long; }
+    if (n) { map->last_modified = n->payload.tag_long; } else { map->last_modified = time(NULL); }
 
-    n = nbt_find_by_path(root, "ClassicWorld.Spawn.X");
-    if (n) { map->spawn_x = n->payload.tag_short; }
-    n = nbt_find_by_path(root, "ClassicWorld.Spawn.Y");
-    if (n) { map->spawn_y = n->payload.tag_short; }
-    n = nbt_find_by_path(root, "ClassicWorld.Spawn.Z");
-    if (n) { map->spawn_z = n->payload.tag_short; }
-    n = nbt_find_by_path(root, "ClassicWorld.Spawn.H");
-    if (n) { map->spawn_heading = n->payload.tag_byte; }
-    n = nbt_find_by_path(root, "ClassicWorld.Spawn.P");
-    if (n) { map->spawn_pitch = n->payload.tag_byte; }
+    n = nbt_expect(root, "ClassicWorld.Spawn.X", TAG_SHORT);
+    if (!n) { goto fail; }
+    map->spawn_x = n->payload.tag_short;
+    n = nbt_expect(root, "ClassicWorld.Spawn.Y", TAG_SHORT);
+    if (!n) { goto fail; }
+    map->spawn_y = n->payload.tag_short;
+    n = nbt_expect(root, "ClassicWorld.Spawn.Z", TAG_SHORT);
+    if (!n) { goto fail; }
+    map->spawn_z = n->payload.tag_short;
+    n = nbt_expect(root, "ClassicWorld.Spawn.H", TAG_BYTE);
+    if (!n) { goto fail; }
+    map->spawn_heading = n->payload.tag_byte;
+    n = nbt_expect(root, "ClassicWorld.Spawn.P", TAG_BYTE);
+    if (!n) { goto fail; }
+    map->spawn_pitch = n->payload.tag_byte;
 
-    n = nbt_find_by_path(root, "ClassicWorld.BlockArray");
+    n = nbt_expect(root, "ClassicWorld.BlockArray", TAG_BYTE_ARRAY);
+    if (!n) { goto fail; }
+    int32_t len = n->payload.tag_byte_array.length;
+    if (len != map->x_size * map->y_size * map->z_size) { goto fail; } //dimensions check
+    map->block_array = (pchar *)p_malloc((psize)len);
+    if (!map->block_array) { goto fail; }
+    memcpy(map->block_array, n->payload.tag_byte_array.data, (size_t)len);
+
+    //block array 2 is optional
+    n = nbt_find_by_path(root, "ClassicWorld.BlockArray2");
     if (n) {
-        int32_t len = n->payload.tag_byte_array.length;
-        if (len != map->x_size * map->y_size * map->z_size) { goto fail; }
-
-        map->block_array = (pchar *)p_malloc((psize)len);
-        if (!map->block_array) { goto fail; }
-        memcpy(map->block_array, n->payload.tag_byte_array.data, (size_t)len);
+        int32_t len2 = n->payload.tag_byte_array.length;
+        if (len2 != len / 4) { goto fail; } //2 bits per block in block_array2
+        map->block_array2 = (pchar *)p_malloc((psize)len2);
+        if (!map->block_array2) { goto fail; }
+        memcpy(map->block_array2, n->payload.tag_byte_array.data, (size_t)len2);
     }
 
     /* CPE: CustomBlocks */
@@ -480,6 +496,10 @@ pboolean tc_map_save(tc_map_t *map, const pchar *path)
 
     int32_t block_count = (int32_t)map->x_size * map->y_size * map->z_size;
     if (!nbt_put(root, nbt_make_byte_array("BlockArray", map->block_array, block_count))) { goto fail; }
+
+    if (map->block_array2) {
+        if (!nbt_put(root, nbt_make_byte_array("BlockArray2", map->block_array2, block_count / 4))) { goto fail; }
+    }
 
     nbt_node *metadata = nbt_make_compound("Metadata");
     if (!metadata) { goto fail; }

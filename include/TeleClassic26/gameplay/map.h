@@ -79,7 +79,9 @@ typedef struct tc_map {
     pchar* map_gen_software;
     pchar* map_gen_name;
 
-    pchar* block_array;
+    // we support up to 10 bits per block, up to 1024 total blocks
+    pchar* block_array; //store the 0th to 7th bit for block data (one byte per block)
+    pchar* block_array2; //store the 8th and 9th bit for extended block data (two bits per block)
 
     tc_map_custom_blocks_extension_t* custom_blocks_extension;
     tc_map_env_colors_extension_t* env_colors_extension;
@@ -100,6 +102,28 @@ typedef struct tc_map {
 
     pchar format_version; 
 } tc_map_t;
+
+#define TELECLASSIC26_MAP_BLOCK_INDEX(map, x, y, z) (y * map->z_size + z) * map->x_size + x
+
+inline pshort tc_map_get_block_index(tc_map_t *map, pshort x, pshort y, pshort z) {
+    psize index = TELECLASSIC26_MAP_BLOCK_INDEX(map, x, y, z);
+    pshort block = map->block_array[index] & 0xFF;
+    if (map->block_array2) {
+        pint shift = (index % 4) * 2;
+        block |= ((map->block_array2[index / 4] >> shift) & 0x3) << 8;
+    }
+    return block;
+}
+
+inline void tc_map_set_block_index(tc_map_t *map, pshort x, pshort y, pshort z, pshort block) {
+    psize index = TELECLASSIC26_MAP_BLOCK_INDEX(map, x, y, z);
+    if (map->block_array2) {
+        pint shift = (index % 4) * 2;
+        map->block_array2[index / 4] = (map->block_array2[index / 4] & ~(0x3 << shift))
+                                      | (((block >> 8) & 0x3) << shift);
+    }
+    map->block_array[index] = block & 0xFF;
+}  
 
 void tc_map_generate(tc_map_t *map, const pchar* name, pshort x_size, pshort y_size, pshort z_size, tc_map_generation_mode_t generation_mode);
 void tc_map_finalize(tc_map_t *map);
