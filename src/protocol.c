@@ -1,9 +1,14 @@
 #include <plibsys.h>
 #include <TeleClassic26/networking/protocol.h>
 #include <TeleClassic26/networking/server.h>
+#include <stdint.h>
 #include <string.h>
 
-static pboolean send_byte(PSocket* socket, const pchar opcode) {
+const tc_cpe_extension_t tc_supported_extensions[] = {
+    
+};
+
+pboolean tc_protocol_send_byte(PSocket* socket, const pchar opcode) {
     PError *error = NULL;
     pssize sent = p_socket_send(socket, &opcode, 1, &error);
     if (sent > 0) {
@@ -18,7 +23,30 @@ static pboolean send_byte(PSocket* socket, const pchar opcode) {
     return is_waiting;
 }
 
-static pboolean send_string(PSocket* socket, const pchar str[]) {
+pboolean tc_protocol_send_short(PSocket* socket, const int16_t data) {
+    pchar high = data >> 8;
+    pchar low = data & 0xFF;
+
+    if (!tc_protocol_send_byte(socket, high)) {
+        return FALSE;
+    }
+    if (!tc_protocol_send_byte(socket, low)) {
+        return FALSE;
+    }
+    return TRUE;
+}
+
+pboolean tc_protocol_send_int(PSocket* socket, const int32_t data) {
+    for (pint i = 0; i < sizeof(int32_t); i++) {
+        pchar byte = (data >> (i * 8)) & 0xFF;
+        if (!tc_protocol_send_byte(socket, byte)) {
+            return FALSE;
+        }
+    }
+    return TRUE;
+}
+
+pboolean tc_protocol_send_string(PSocket* socket, const pchar str[]) {
     pchar buffer[TC_PROTOCOL_MAX_STR_LEN];
 
     const pchar* current = &str[0];
@@ -50,113 +78,78 @@ static pboolean send_string(PSocket* socket, const pchar str[]) {
     return is_waiting;
 }
 
-static void decode_string(pchar* dest_buffer, pchar* packet_buffer) {
+psize tc_protocol_decode_string(pchar* dest_buffer, pchar* packet_buffer) {
+    psize length = TC_PROTOCOL_MAX_STR_LEN;
     memcpy(dest_buffer, packet_buffer, TC_PROTOCOL_MAX_STR_LEN);
     for (psize i = TC_PROTOCOL_MAX_STR_LEN; i > 0; i--) {
         if (dest_buffer[i - 1] != 0x20) break;
         dest_buffer[i - 1] = '\0';
+        length = i - 1;
     }
+
+    return length;
 }
-
-static void handle_player_identification(void* arg, tc_thread_pool_task_priority_t priority) {
-    tc_session_t* session = (tc_session_t*)arg;
-
-    if (session->authenticated_service) {
-        tc_server_kick_session(session, "Already Identified: Your client has a bug.");
-        return;
-    }
-
-    // validate the protocol version
-    pchar protocol_version = session->pending_packet_buffer[0];
-    if (protocol_version <= TC_PROTOCOL_VERSION) {
-        tc_server_kick_session(session, "Invalid Protocol Version: Please update your client.");
-        return;
-    }
-
-    // copy the username from the packet buffer
-    decode_string(session->username, &session->pending_packet_buffer[1]);
-
-    // copy the key from the packet buffer
-    pchar key[TC_PROTOCOL_MAX_STR_LEN];
-    decode_string(key, &session->pending_packet_buffer[1 + TC_PROTOCOL_MAX_STR_LEN]);
-
-    session->authenticated_service = tc_heartbeat_manager_validate(
-        &session->server->heartbeat_manager, 
-        session->username, 
-        key
-    );
-    if (!session->authenticated_service) {
-        tc_server_kick_session(session, "Could not validate your identity.");
-        return;
-    }
-
-    pboolean identify_success = tc_protocol_server_identification(
-        session->client_socket, 
-        session->server->heartbeat_manager.info.server_name, 
-        session->server->motd, 
-        TC_PROTOCOL_USER_TYPE_STANDARD
-    );
-    if (!identify_success) {
-        tc_server_kick_session(session, "Could not identify you to the server.");
-        return;
-    }
-
-    tc_server_protocol_handler_cleanup(session, NULL);
-
-    pboolean schedule_success = tc_thread_schedule_new(
-        &session->server->thread_pool,
-        tc_server_client_listen_task,
-        session,
-        TC_THREAD_POOL_TASK_PRIORITY_HIGH
-    );
-    if (!schedule_success) {
-        tc_server_kick_session(session, "Server is Busy: Please try again or come back soon.");
-        return;
-    }
-
-    p_atomic_int_inc(&session->server->active_players);
-    return;
-}
-
-const psize tc_protocol_packet_sizes[TC_PROTOCOL_TOTAL_PACKETS] = {
-    [0x00] = 130 // player identification packet 
-};
-
-const tc_thread_pool_task_t tc_protocol_packet_handlers[TC_PROTOCOL_TOTAL_PACKETS] = { 
-    [0x00] = handle_player_identification,
-};
 
 pboolean tc_protocol_server_identification(PSocket* session, const pchar server_name[], const pchar motd[], pchar user_type) {
-    if (!send_byte(session, 0x00)) {
+    if (!tc_protocol_send_byte(session, 0x00)) {
         return FALSE;
     }
-    if (!send_byte(session, TC_PROTOCOL_VERSION)) {
+    if (!tc_protocol_send_byte(session, TC_PROTOCOL_VERSION)) {
         return FALSE;
     }
-    if (!send_string(session, server_name)) {
+    if (!tc_protocol_send_string(session, server_name)) {
         return FALSE;
     }
-    if (!send_string(session, motd)) {
+    if (!tc_protocol_send_string(session, motd)) {
         return FALSE;
     }
-    if (!send_byte(session, user_type)) {
+    if (!tc_protocol_send_byte(session, user_type)) {
         return FALSE;
     }
     return TRUE;
 }
 
 pboolean tc_protocol_ping(PSocket* session) {
-    if (!send_byte(session, 0x01)) {
+    if (!tc_protocol_send_byte(session, 0x01)) {
         return FALSE;
     }
     return TRUE;
 }
 
 pboolean tc_protocol_kick(PSocket* session, const pchar msg[]) {
-    if (!send_byte(session, 0x0e)) {
+    if (!tc_protocol_send_byte(session, 0x0e)) {
         return FALSE;
     }
-    if (!send_string(session, msg)) {
+    if (!tc_protocol_send_string(session, msg)) {
+        return FALSE;
+    }
+    return TRUE;
+}
+
+pboolean tc_cpe_send_extinfo(PSocket* session, const char* appname) {
+    if (!tc_protocol_send_byte(session, 0x10)) {
+        return FALSE;
+    }
+    if (!tc_protocol_send_string(session, appname ? appname : "TeleClassic26")) {
+        return FALSE;
+    }
+
+    psize num_supported_extensions = sizeof(tc_supported_extensions) / sizeof(tc_cpe_extension_t);
+    if (!tc_protocol_send_short(session, num_supported_extensions)) {
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+pboolean tc_cpe_send_extentry(PSocket* session, const tc_cpe_extension_t* extension) {
+    if (!tc_protocol_send_byte(session, 0x11)) {
+        return FALSE;
+    }
+    if (!tc_protocol_send_string(session, extension->name)) {
+        return FALSE;
+    }
+    if (!tc_protocol_send_int(session, extension->version)) {
         return FALSE;
     }
     return TRUE;

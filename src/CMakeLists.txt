@@ -3,6 +3,7 @@ add_executable(${PROJECT_NAME}
     server.c
     thread_pool.c
     protocol.c
+    handler.c
     heartbeat.c
     utils.c
     log.c

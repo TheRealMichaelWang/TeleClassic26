@@ -23,6 +23,7 @@ typedef struct tc_session {
     pint pending_packet_opcode;
     pchar *pending_packet_buffer;
     psize pending_packet_buffer_size;
+    pboolean supports_cpe;
 
     pint id;
 } tc_session_t;

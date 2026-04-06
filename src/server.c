@@ -4,6 +4,7 @@
 #include <plibsys.h>
 #include <TeleClassic26/networking/server.h>
 #include <TeleClassic26/log.h>
+#include <TeleClassic26/networking/handler.h>
 
 pboolean tc_server_init(
     tc_server_t *server, 
@@ -194,19 +195,19 @@ void tc_server_client_listen_task(void *arg, tc_thread_pool_task_priority_t prio
             session->pending_packet_opcode = (pint)opcode_buffer[0];
 
             // validate the packet opcode
-            if (session->pending_packet_opcode < 0 || session->pending_packet_opcode >= TC_PROTOCOL_TOTAL_PACKETS) {
+            if (session->pending_packet_opcode < 0 || session->pending_packet_opcode >= TC_PACKET_HANDLERS_MAX_PACKETS) {
                 p_error_free(error);
                 tc_server_kick_session(session, "Packet Opcode Out of Range: Please reconnect.");
                 return;
             }
-            if (tc_protocol_packet_handlers[session->pending_packet_opcode] == NULL) {
+            if (tc_packet_handlers[session->pending_packet_opcode] == NULL) {
                 p_error_free(error);
                 tc_server_kick_session(session, "Invalid Packet Opcode: Please reconnect.");
                 return;
             }
 
             // allocate the buffer for the packet data
-            psize packet_buffer_size = tc_protocol_packet_sizes[session->pending_packet_opcode];
+            psize packet_buffer_size = tc_packet_data_sizes[session->pending_packet_opcode];
             session->pending_packet_buffer = p_malloc(packet_buffer_size);
             session->pending_packet_buffer_size = 0;
             if (session->pending_packet_buffer == NULL) {
@@ -221,7 +222,7 @@ void tc_server_client_listen_task(void *arg, tc_thread_pool_task_priority_t prio
             return;
         }
     } else {
-        psize packet_buffer_size = tc_protocol_packet_sizes[session->pending_packet_opcode];
+        psize packet_buffer_size = tc_packet_data_sizes[session->pending_packet_opcode];
 
         PError *error = NULL;
         psize read_size = p_socket_receive(
@@ -236,7 +237,7 @@ void tc_server_client_listen_task(void *arg, tc_thread_pool_task_priority_t prio
 
             // buffer is full, process the packet
             if (session->pending_packet_buffer_size == packet_buffer_size) {
-                tc_thread_pool_task_t handler = tc_protocol_packet_handlers[session->pending_packet_opcode];
+                tc_thread_pool_task_t handler = tc_packet_handlers[session->pending_packet_opcode];
                 tc_thread_schedule_next(
                     &session->server->thread_pool,
                     handler,
@@ -291,6 +292,7 @@ static void handle_new_session(tc_server_t* server, PSocket* client_socket) {
 
     p_mutex_unlock(server->lock);
 
+    // Initialize the session here
     tc_session_t* session = &server->session_buffer[session_id];
     session->client_socket = client_socket;
     session->id = session_id;
@@ -298,6 +300,7 @@ static void handle_new_session(tc_server_t* server, PSocket* client_socket) {
     session->pending_packet_opcode = -1;
     session->pending_packet_buffer = NULL;
     session->pending_packet_buffer_size = 0;
+    session->supports_cpe = FALSE;
     session->authenticated_service = NULL;
 
     session->ping_profiler = p_time_profiler_new();
