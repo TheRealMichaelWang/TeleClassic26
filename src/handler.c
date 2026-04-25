@@ -44,17 +44,29 @@ static void handle_cpe_extinfo(void* arg, tc_thread_pool_task_priority_t priorit
     pchar appname[TC_PROTOCOL_MAX_STR_LEN];
     tc_protocol_decode_string(appname, &session->pending_packet_buffer[1]);
 
-
-
     // read extension count
     pshort extension_count = tc_protocol_decode_short(&session->pending_packet_buffer[1 + TC_PROTOCOL_MAX_STR_LEN]);
     session->remaining_cpe_ext_packets = extension_count;
+
+    TC_LOG_SESSION(log_info, session, "Received CPE extinfo packet (app: %.*s, extension count: %d)", TC_PROTOCOL_MAX_STR_LEN, appname, extension_count);
 
     tc_server_protocol_handler_cleanup(session, tc_server_client_listen_task, priority);
 }
 
 static void handle_cpe_extentry(void* arg, tc_thread_pool_task_priority_t priority) {
+    tc_session_t* session = (tc_session_t*)arg;
+    TC_ASSERT(session->supports_cpe, "Session does not support CPE.");
 
+    pchar extension_name[TC_PROTOCOL_MAX_STR_LEN];
+    tc_protocol_decode_string(extension_name, &session->pending_packet_buffer[1]);
+
+    pint extension_version = tc_protocol_decode_int(&session->pending_packet_buffer[1 + TC_PROTOCOL_MAX_STR_LEN]);
+    if (extension_version < 1 || extension_version > 3) {
+        tc_server_kick_session(session, "Invalid extension version: Please update your client.");
+        return;
+    }
+
+    
 }
 
 static void handle_player_identification(void* arg, tc_thread_pool_task_priority_t priority) {
