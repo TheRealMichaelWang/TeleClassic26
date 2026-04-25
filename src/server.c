@@ -378,3 +378,10 @@ void tc_server_stop(tc_server_t *server) {
     tc_heartbeat_manager_stop(&server->heartbeat_manager);
     tc_thread_pool_stop(&server->thread_pool);
 }
+
+pint tc_server_get_extension_version(tc_session_t* session, const pint extension_index) {
+    if (extension_index < 0 || extension_index >= TC_CPE_EXTENSION_MAX_SUPPORTED) {
+        return -1;
+    }
+    return (session->ext_cpe_versions[extension_index / 4] >> (extension_index % 4 * 2)) & 0x3;
+}
