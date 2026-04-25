@@ -123,7 +123,7 @@ static void handle_player_identification(void* arg, tc_thread_pool_task_priority
 
         p_atomic_int_inc(&session->server->active_players);
 
-        log_info("Finished handshake (no CPE) successfully with user %.*s.", TC_PROTOCOL_MAX_STR_LEN, session->username);
+        TC_LOG_SESSION(log_info, session, "Finished handshake (no CPE) successfully.");
     }
 }
 

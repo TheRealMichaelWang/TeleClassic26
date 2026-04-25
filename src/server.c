@@ -4,6 +4,7 @@
 #include "TeleClassic26/authentication/heartbeat.h"
 #include "TeleClassic26/thread_pool.h"
 #include <TeleClassic26/log.h>
+#include <TeleClassic26/utils.h>
 #include <plibsys.h>
 #include <string.h>
 
@@ -96,12 +97,7 @@ void tc_server_finalize(tc_server_t *server) {
 }
 
 static void disconnect_session(tc_session_t* session) {
-    log_info(
-        "Disconnecting session %d (username: %s)...", 
-        session->id, 
-        session->username,
-        session->authenticated_service ? session->authenticated_service->hostname : "N/A"
-    );
+    TC_LOG_SESSION(log_info, session, "Disconnecting session %d...", session->id);
 
     // free the pending packet buffer
     if (session->pending_packet_buffer) {
@@ -135,12 +131,7 @@ static void disconnect_session(tc_session_t* session) {
 void tc_server_kick_session(tc_session_t* session, const char* msg) {
     if (msg) {
         if (session->authenticated_service) {
-            log_info(
-                "Kicking session %d (username: %.s from heartbeat service %s).", 
-                session->id, 
-                TC_PROTOCOL_MAX_STR_LEN, session->username, 
-                session->authenticated_service->hostname
-            );
+            TC_LOG_SESSION(log_info, session, "Kicking session %d.", session->id);
         }
         tc_protocol_kick(session->client_socket, msg);
     }
