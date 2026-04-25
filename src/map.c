@@ -1,3 +1,4 @@
+#include "plibsys.h"
 #include <nbt.h>
 #include <TeleClassic26/gameplay/map.h>
 
@@ -430,6 +431,14 @@ pboolean tc_map_load(tc_map_t *map, const pchar *path)
             n = nbt_expect(child, "Coords", TAG_BYTE_ARRAY);
             if (!n || n->payload.tag_byte_array.length < 6) { goto fail; }
             memcpy(def->coords, n->payload.tag_byte_array.data, 6);
+
+            n = nbt_expect(child, "AllowPlacement", TAG_BYTE);
+            if (!n) { def->allow_placement = TRUE; }
+            else { def->allow_placement = (n->payload.tag_byte != 1); }
+
+            n = nbt_expect(child, "AllowDeletion", TAG_BYTE);
+            if (!n) { def->allow_deletion = TRUE; }
+            else { def->allow_deletion = (n->payload.tag_byte != 1); }
         }
 
         bd->block_definitions = p_list_reverse(bd->block_definitions);
@@ -594,6 +603,9 @@ pboolean tc_map_save(tc_map_t *map, const pchar *path)
                 if (!nbt_put(blk, nbt_make_byte("BlockDraw", def->block_draw))) { goto fail; }
                 if (!nbt_put(blk, nbt_make_byte_array("Fog", def->fog, 4))) { goto fail; }
                 if (!nbt_put(blk, nbt_make_byte_array("Coords", def->coords, 6))) { goto fail; }
+
+                if (!nbt_put(blk, nbt_make_byte("AllowPlacement", def->allow_placement ? 1 : 0))) { goto fail; }
+                if (!nbt_put(blk, nbt_make_byte("AllowDeletion", def->allow_deletion ? 1 : 0))) { goto fail; }
             }
         }
     }

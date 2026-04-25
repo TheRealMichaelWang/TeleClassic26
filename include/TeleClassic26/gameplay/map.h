@@ -50,6 +50,9 @@ typedef struct tc_map_block_definition {
     pchar *block_name;
     pfloat speed;
 
+    pboolean allow_placement;
+    pboolean allow_deletion;
+
     pchar transmits_light;
     pchar walk_sound;
 
