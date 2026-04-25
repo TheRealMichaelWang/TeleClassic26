@@ -11,9 +11,18 @@
 #include <stdio.h>
 #include <stdarg.h>
 #include <stdbool.h>
+#include <string.h>
 #include <time.h>
 
 #define LOG_VERSION "0.1.0"
+
+#ifndef __FILE_NAME__
+#  ifdef _MSC_VER
+#    define __FILE_NAME__ (strrchr(__FILE__, '\\') ? strrchr(__FILE__, '\\') + 1 : __FILE__)
+#  else
+#    define __FILE_NAME__ __FILE__
+#  endif
+#endif
 
 typedef struct {
     va_list ap;
