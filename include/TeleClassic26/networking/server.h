@@ -14,18 +14,24 @@ typedef struct tc_session tc_session_t;
 
 typedef struct tc_session {
     pchar username[TC_PROTOCOL_MAX_STR_LEN];
+
+    // 2 bits per extension to represent the version
+    pchar ext_cpe_versions[TC_CPE_EXTENSION_MAX_SUPPORTED / 4];
+
     PSocket *client_socket;
     tc_server_t *server;
 
     PTimeProfiler* ping_profiler;
     tc_heartbeat_service_t* authenticated_service;
 
-    pint pending_packet_opcode;
     pchar *pending_packet_buffer;
     psize pending_packet_buffer_size;
+    pint pending_packet_opcode;
+
     pboolean supports_cpe;
 
     pint id;
+    pshort remaining_cpe_ext_packets;
 } tc_session_t;
 
 typedef struct tc_server {
@@ -84,8 +90,9 @@ void tc_server_kick_session(tc_session_t* session, const char* msg);
 // cleans up pending packet buffer and schedules next task in client task chain
 // - session: the session to cleanup
 // - next_task: the next task to schedule; usually should be tc_server_client_listen_worker
+// - priority: the priority of the current task chain
 // NOTE: call this function at the end of each protocol packet handler
-void tc_server_protocol_handler_cleanup(tc_session_t* session, tc_thread_pool_task_t next_task);
+void tc_server_protocol_handler_cleanup(tc_session_t* session, tc_thread_pool_task_t next_task, tc_thread_pool_task_priority_t priority);
 
 // Task that kicks a client and disconnects gracefully
 // - arg: pointer to the session to kick

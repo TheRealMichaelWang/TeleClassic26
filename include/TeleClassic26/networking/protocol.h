@@ -10,12 +10,14 @@
 #define TC_PROTOCOL_USER_TYPE_OPERATOR 0x64
 #define TC_PROTOCOL_USER_TYPE_STANDARD 0x00
 
+#define TC_CPE_EXTENSION_MAX_SUPPORTED 0
+
 typedef struct tc_cpe_extension {
     pchar name[TC_PROTOCOL_MAX_STR_LEN];
-    int32_t version;
+    pchar version; //must be between 0-3, inclusive
 } tc_cpe_extension_t;
 
-extern const tc_cpe_extension_t tc_supported_extensions[];
+extern const tc_cpe_extension_t tc_supported_extensions[TC_CPE_EXTENSION_MAX_SUPPORTED];
 
 // sends a byte to the socket
 // - socket: the socket to send the byte to
@@ -40,6 +42,18 @@ pboolean tc_protocol_send_int(PSocket* socket, const int32_t data);
 // - str: the string to send; only 64 bytes max will be sent
 // - return: TRUE if the string was sent, FALSE otherwise
 pboolean tc_protocol_send_string(PSocket* socket, const pchar str[]);
+
+// decodes a short from a packet buffer
+// - dest_buffer: the buffer to write the decoded short to
+// - packet_buffer: must be a ptr to addr within packet_data buffer
+// NOTE: this writes out a max of 2 bytes to the dest_buffer
+int16_t tc_protocol_decode_short(pchar* packet_buffer);
+
+// decodes an integer from a packet buffer
+// - dest_buffer: the buffer to write the decoded integer to
+// - packet_buffer: must be a ptr to addr within packet_data buffer
+// NOTE: this writes out a max of 4 bytes to the dest_buffer
+int32_t tc_protocol_decode_int(pchar* packet_buffer);
 
 // decodes a string from a packet buffer
 // - dest_buffer: the buffer to write the decoded string to
@@ -68,14 +82,15 @@ pboolean tc_protocol_kick(PSocket* session, const pchar msg[]);
 
 // sends a CPE extinfo packet
 // - session: the session to send the packet to
-// - appname: the name of the application to send the packet to (if NULL, then default to "TeleClassic26")
+// - appname: the name of the application to send the packet to
 // - return: TRUE if the packet was sent, FALSE otherwise
 pboolean tc_cpe_send_extinfo(PSocket* session, const char* appname);
 
 // sends a CPE extentry packet
 // - session: the session to send the packet to
-// - extension: pointer tothe extension to send the packet to
+// - extension_name: the name of the extension to send the packet to
+// - extension_version: the version of the extension to send the packet to
 // - return: TRUE if the packet was sent, FALSE otherwise
-pboolean tc_cpe_send_extentry(PSocket* session, const tc_cpe_extension_t* extension);
+pboolean tc_cpe_send_extentry(PSocket* session, const pchar extension_name[TC_PROTOCOL_MAX_STR_LEN], pchar extension_version);
 
 #endif /* TELECLASSIC26_SESSION_H */

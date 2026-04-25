@@ -1,10 +1,11 @@
 #include <TeleClassic26/networking/protocol.h>
+#include <TeleClassic26/networking/handler.h>
+#include <TeleClassic26/networking/server.h>
 #include "TeleClassic26/authentication/heartbeat.h"
 #include "TeleClassic26/thread_pool.h"
-#include <plibsys.h>
-#include <TeleClassic26/networking/server.h>
 #include <TeleClassic26/log.h>
-#include <TeleClassic26/networking/handler.h>
+#include <plibsys.h>
+#include <string.h>
 
 pboolean tc_server_init(
     tc_server_t *server, 
@@ -133,18 +134,21 @@ static void disconnect_session(tc_session_t* session) {
 // kicks a session from the server
 void tc_server_kick_session(tc_session_t* session, const char* msg) {
     if (msg) {
-        log_info(
-            "Kicking session %d (username: %s)", 
-            session->id, 
-            session->authenticated_service ? session->username : "N/A"
-        );
+        if (session->authenticated_service) {
+            log_info(
+                "Kicking session %d (username: %.s from heartbeat service %s).", 
+                session->id, 
+                TC_PROTOCOL_MAX_STR_LEN, session->username, 
+                session->authenticated_service->hostname
+            );
+        }
         tc_protocol_kick(session->client_socket, msg);
     }
     disconnect_session(session);
 }
 
 // cleans up pending packet buffer and schedules next task in client task chain
-void tc_server_protocol_handler_cleanup(tc_session_t* session, tc_thread_pool_task_t next_task) {
+void tc_server_protocol_handler_cleanup(tc_session_t* session, tc_thread_pool_task_t next_task, tc_thread_pool_task_priority_t priority) {
     p_free(session->pending_packet_buffer);
     session->pending_packet_opcode = -1;
     session->pending_packet_buffer = NULL;
@@ -156,7 +160,7 @@ void tc_server_protocol_handler_cleanup(tc_session_t* session, tc_thread_pool_ta
             next_task,
             tc_server_shutdown_client_task,
             session,
-            TC_THREAD_POOL_TASK_PRIORITY_HIGH
+            priority
         );
     }
 }
@@ -302,6 +306,8 @@ static void handle_new_session(tc_server_t* server, PSocket* client_socket) {
     session->pending_packet_buffer_size = 0;
     session->supports_cpe = FALSE;
     session->authenticated_service = NULL;
+    session->remaining_cpe_ext_packets = -1;
+    memset(session->ext_cpe_versions, 0, sizeof(session->ext_cpe_versions));
 
     session->ping_profiler = p_time_profiler_new();
     if (!session->ping_profiler) {

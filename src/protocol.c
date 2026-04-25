@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include <string.h>
 
-const tc_cpe_extension_t tc_supported_extensions[] = {
+const tc_cpe_extension_t tc_supported_extensions[TC_CPE_EXTENSION_MAX_SUPPORTED] = {
     
 };
 
@@ -44,6 +44,14 @@ pboolean tc_protocol_send_int(PSocket* socket, const int32_t data) {
         }
     }
     return TRUE;
+}
+
+int16_t tc_protocol_decode_short(pchar* packet_buffer) {
+    return (packet_buffer[0] << 8) | packet_buffer[1];
+}
+
+int32_t tc_protocol_decode_int(pchar* packet_buffer) {
+    return (packet_buffer[0] << 24) | (packet_buffer[1] << 16) | (packet_buffer[2] << 8) | packet_buffer[3];
 }
 
 pboolean tc_protocol_send_string(PSocket* socket, const pchar str[]) {
@@ -130,26 +138,25 @@ pboolean tc_cpe_send_extinfo(PSocket* session, const char* appname) {
     if (!tc_protocol_send_byte(session, 0x10)) {
         return FALSE;
     }
-    if (!tc_protocol_send_string(session, appname ? appname : "TeleClassic26")) {
+    if (!tc_protocol_send_string(session, appname)) {
         return FALSE;
     }
 
-    psize num_supported_extensions = sizeof(tc_supported_extensions) / sizeof(tc_cpe_extension_t);
-    if (!tc_protocol_send_short(session, num_supported_extensions)) {
+    if (!tc_protocol_send_short(session, TC_CPE_EXTENSION_MAX_SUPPORTED)) {
         return FALSE;
     }
 
     return TRUE;
 }
 
-pboolean tc_cpe_send_extentry(PSocket* session, const tc_cpe_extension_t* extension) {
+pboolean tc_cpe_send_extentry(PSocket* session, const pchar extension_name[TC_PROTOCOL_MAX_STR_LEN], pchar extension_version) {
     if (!tc_protocol_send_byte(session, 0x11)) {
         return FALSE;
     }
-    if (!tc_protocol_send_string(session, extension->name)) {
+    if (!tc_protocol_send_string(session, extension_name)) {
         return FALSE;
     }
-    if (!tc_protocol_send_int(session, extension->version)) {
+    if (!tc_protocol_send_int(session, extension_version)) {
         return FALSE;
     }
     return TRUE;
