@@ -161,3 +161,12 @@ pboolean tc_cpe_send_extentry(PSocket* session, const pchar extension_name[TC_PR
     }
     return TRUE;
 }
+
+pint tc_cpe_get_extension_index(const pchar extension_name[TC_PROTOCOL_MAX_STR_LEN]) {
+    for (pint i = 0; i < TC_CPE_EXTENSION_MAX_SUPPORTED; i++) {
+        if (strncmp(extension_name, tc_supported_extensions[i].name, TC_PROTOCOL_MAX_STR_LEN) == 0) {
+            return i;
+        }
+    }
+    return -1;
+}

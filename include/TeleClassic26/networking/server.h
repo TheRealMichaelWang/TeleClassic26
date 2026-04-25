@@ -16,7 +16,7 @@ typedef struct tc_session {
     pchar username[TC_PROTOCOL_MAX_STR_LEN];
 
     // 2 bits per extension to represent the version
-    pchar ext_cpe_versions[(TC_CPE_EXTENSION_ARRAY_SIZE + 3) / 4];
+    pchar ext_cpe_versions[(TC_CPE_EXTENSION_MAX_SUPPORTED + 3) / 4];
 
     PSocket *client_socket;
     tc_server_t *server;

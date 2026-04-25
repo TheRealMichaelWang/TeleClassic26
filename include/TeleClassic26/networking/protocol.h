@@ -93,4 +93,9 @@ pboolean tc_cpe_send_extinfo(PSocket* session, const char* appname);
 // - return: TRUE if the packet was sent, FALSE otherwise
 pboolean tc_cpe_send_extentry(PSocket* session, const pchar extension_name[TC_PROTOCOL_MAX_STR_LEN], pchar extension_version);
 
+// Gets the index of a supported extension by name
+// - extension_name: the name of the extension to get the index of
+// - return: the index of the extension, -1 if not found
+pint tc_cpe_get_extension_index(const pchar extension_name[TC_PROTOCOL_MAX_STR_LEN]);
+
 #endif /* TELECLASSIC26_SESSION_H */

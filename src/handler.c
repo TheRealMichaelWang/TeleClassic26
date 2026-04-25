@@ -4,9 +4,13 @@
 #include <TeleClassic26/networking/server.h>
 #include <TeleClassic26/log.h>
 
+static void finalize_player_identification(tc_session_t* session, tc_thread_pool_task_priority_t priority);
+
 static void handle_begin_cpe_negotiation(void* arg, tc_thread_pool_task_priority_t priority) {
     tc_session_t* session = (tc_session_t*)arg;
     TC_ASSERT(session->supports_cpe, "Session does not support CPE.");
+
+    TC_LOG_SESSION(log_info, session, "Begining CPE negotiation with client.");
 
     // send extinfo packet
     pboolean extinfo_success = tc_cpe_send_extinfo(session->client_socket, "TeleClassic26");
@@ -57,16 +61,67 @@ static void handle_cpe_extentry(void* arg, tc_thread_pool_task_priority_t priori
     tc_session_t* session = (tc_session_t*)arg;
     TC_ASSERT(session->supports_cpe, "Session does not support CPE.");
 
-    pchar extension_name[TC_PROTOCOL_MAX_STR_LEN];
-    tc_protocol_decode_string(extension_name, &session->pending_packet_buffer[1]);
-
-    pint extension_version = tc_protocol_decode_int(&session->pending_packet_buffer[1 + TC_PROTOCOL_MAX_STR_LEN]);
-    if (extension_version < 1 || extension_version > 3) {
-        tc_server_kick_session(session, "Invalid extension version: Please update your client.");
+    if (session->remaining_cpe_ext_packets == 0) {
+        tc_server_kick_session(session, "Client has already sent all extension packets.");
         return;
     }
 
-    
+    pchar extension_name[TC_PROTOCOL_MAX_STR_LEN];
+    tc_protocol_decode_string(extension_name, &session->pending_packet_buffer[1]);
+    pint extension_index = tc_cpe_get_extension_index(extension_name);
+    if (extension_index < 0) {
+        tc_server_kick_session(session, "Invalid extension name: TeleClassic26 does not support this extension.");
+        return;
+    }
+
+    pint extension_version = tc_protocol_decode_int(&session->pending_packet_buffer[1 + TC_PROTOCOL_MAX_STR_LEN]);
+    if (extension_version < 1 || extension_version > 3) {
+        tc_server_kick_session(session, "Invalid extension version: TeleClassic26 only supports extensions 1-3.");
+        return;
+    }
+
+    // log information
+    TC_LOG_SESSION(log_info, session, "Received CPE extentry packet (extension: %.*s, version: %d)", TC_PROTOCOL_MAX_STR_LEN, extension_name, extension_version);
+
+    // set the extension version in the ext_cpe_versions array
+    session->ext_cpe_versions[extension_index / 4] |= ((extension_version & 0x3) << (extension_index % 4 * 2));
+
+    if (session->remaining_cpe_ext_packets == 0) {
+        finalize_player_identification(session, priority);
+    } else {
+        session->remaining_cpe_ext_packets--;
+        tc_server_protocol_handler_cleanup(session, tc_server_client_listen_task, priority);
+    }
+}
+
+static void finalize_player_identification(tc_session_t* session, tc_thread_pool_task_priority_t priority) {
+    pboolean identify_success = tc_protocol_server_identification(
+        session->client_socket, 
+        session->server->heartbeat_manager.info.server_name, 
+        session->server->motd, 
+        TC_PROTOCOL_USER_TYPE_STANDARD
+    );
+    if (!identify_success) {
+        tc_server_kick_session(session, "Could not send server identification packet.");
+        return;
+    }
+
+    tc_server_protocol_handler_cleanup(session, NULL, priority);
+
+    pboolean schedule_success = tc_thread_schedule_new(
+        &session->server->thread_pool,
+        tc_server_client_listen_task,
+        session,
+        TC_THREAD_POOL_TASK_PRIORITY_HIGH
+    );
+    if (!schedule_success) {
+        tc_server_kick_session(session, "Server is Busy: Please try again or come back soon.");
+        return;
+    }
+
+    p_atomic_int_inc(&session->server->active_players);
+
+    TC_LOG_SESSION(log_info, session, "Finished handshake (no CPE) successfully.");
 }
 
 static void handle_player_identification(void* arg, tc_thread_pool_task_priority_t priority) {
@@ -109,33 +164,7 @@ static void handle_player_identification(void* arg, tc_thread_pool_task_priority
         // schedule CPE negotiation
         tc_server_protocol_handler_cleanup(session, handle_begin_cpe_negotiation, priority);
     } else {
-        pboolean identify_success = tc_protocol_server_identification(
-            session->client_socket, 
-            session->server->heartbeat_manager.info.server_name, 
-            session->server->motd, 
-            TC_PROTOCOL_USER_TYPE_STANDARD
-        );
-        if (!identify_success) {
-            tc_server_kick_session(session, "Could not send server identification packet.");
-            return;
-        }
-
-        tc_server_protocol_handler_cleanup(session, NULL, priority);
-
-        pboolean schedule_success = tc_thread_schedule_new(
-            &session->server->thread_pool,
-            tc_server_client_listen_task,
-            session,
-            TC_THREAD_POOL_TASK_PRIORITY_HIGH
-        );
-        if (!schedule_success) {
-            tc_server_kick_session(session, "Server is Busy: Please try again or come back soon.");
-            return;
-        }
-
-        p_atomic_int_inc(&session->server->active_players);
-
-        TC_LOG_SESSION(log_info, session, "Finished handshake (no CPE) successfully.");
+        finalize_player_identification(session, priority);
     }
 }
 
@@ -146,5 +175,7 @@ const psize tc_packet_data_sizes[TC_PACKET_HANDLERS_MAX_PACKETS] = {
 };
 
 const tc_thread_pool_task_t tc_packet_handlers[TC_PACKET_HANDLERS_MAX_PACKETS] = { 
+    [TC_PACKET_CPE_EXTINFO] = handle_cpe_extinfo,
+    [TC_PACKET_CPE_EXTENTRY] = handle_cpe_extentry,
     [TC_PACKET_PLAYER_IDENTIFICATION] = handle_player_identification,
 };
