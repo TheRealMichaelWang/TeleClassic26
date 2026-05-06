@@ -1,11 +1,13 @@
 #include <plibsys.h>
+#include <TeleClassic26/networking/handler.h>
 #include <TeleClassic26/networking/protocol.h>
 #include <TeleClassic26/networking/server.h>
 #include <stdint.h>
 #include <string.h>
 
 const tc_cpe_extension_t tc_supported_extensions[TC_CPE_EXTENSION_MAX_SUPPORTED] = {
-    
+    [TC_CPE_CUSTOM_BLOCKS_EXTENSION_INDEX] = { .name = "CustomBlocks", .version = 1 },
+    [TC_CPE_BLOCK_DEFINITIONS_EXTENSION_INDEX] = { .name = "BlockDefinitions", .version = 1 },
 };
 
 pboolean tc_protocol_send_byte(PSocket* socket, const pchar opcode) {
@@ -135,7 +137,7 @@ pboolean tc_protocol_kick(PSocket* session, const pchar msg[]) {
 }
 
 pboolean tc_cpe_send_extinfo(PSocket* session, const char* appname) {
-    if (!tc_protocol_send_byte(session, 0x10)) {
+    if (!tc_protocol_send_byte(session, TC_PACKET_CPE_EXTINFO)) {
         return FALSE;
     }
     if (!tc_protocol_send_string(session, appname)) {
@@ -150,13 +152,23 @@ pboolean tc_cpe_send_extinfo(PSocket* session, const char* appname) {
 }
 
 pboolean tc_cpe_send_extentry(PSocket* session, const pchar extension_name[TC_PROTOCOL_MAX_STR_LEN], pchar extension_version) {
-    if (!tc_protocol_send_byte(session, 0x11)) {
+    if (!tc_protocol_send_byte(session, TC_PACKET_CPE_EXTENTRY)) {
         return FALSE;
     }
     if (!tc_protocol_send_string(session, extension_name)) {
         return FALSE;
     }
     if (!tc_protocol_send_int(session, extension_version)) {
+        return FALSE;
+    }
+    return TRUE;
+}
+
+pboolean tc_cpe_send_custom_block_support_level(PSocket* session, pchar support_level) {
+    if (!tc_protocol_send_byte(session, TC_PACKET_CPE_CUSTOM_BLOCK_SUPPORT_LEVEL)) {
+        return FALSE;
+    }
+    if (!tc_protocol_send_byte(session, support_level)) {
         return FALSE;
     }
     return TRUE;

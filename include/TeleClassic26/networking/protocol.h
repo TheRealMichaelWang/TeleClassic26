@@ -10,7 +10,12 @@
 #define TC_PROTOCOL_USER_TYPE_OPERATOR 0x64
 #define TC_PROTOCOL_USER_TYPE_STANDARD 0x00
 
-#define TC_CPE_EXTENSION_MAX_SUPPORTED 16
+#define TC_CPE_EXTENSION_MAX_SUPPORTED 2
+
+#define TC_CPE_CUSTOM_BLOCKS_EXTENSION_INDEX 0
+#define TC_CPE_BLOCK_DEFINITIONS_EXTENSION_INDEX 1
+
+#define TC_CPE_CUSTOM_BLOCKS_MAX_SUPPORT_LEVEL 1
 
 typedef struct tc_cpe_extension {
     pchar name[TC_PROTOCOL_MAX_STR_LEN];
@@ -92,6 +97,12 @@ pboolean tc_cpe_send_extinfo(PSocket* session, const char* appname);
 // - extension_version: the version of the extension to send the packet to
 // - return: TRUE if the packet was sent, FALSE otherwise
 pboolean tc_cpe_send_extentry(PSocket* session, const pchar extension_name[TC_PROTOCOL_MAX_STR_LEN], pchar extension_version);
+
+// sends a custom block support level packet
+// - session: the session to send the packet to
+// - support_level: the support level to send the packet to
+// - return: TRUE if the packet was sent, FALSE otherwise
+pboolean tc_cpe_send_custom_block_support_level(PSocket* session, pchar support_level);
 
 // Gets the index of a supported extension by name
 // - extension_name: the name of the extension to get the index of

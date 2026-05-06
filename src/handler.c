@@ -1,4 +1,5 @@
 #include "TeleClassic26/utils.h"
+#include "plibsys.h"
 #include <TeleClassic26/networking/handler.h>
 #include <TeleClassic26/networking/protocol.h>
 #include <TeleClassic26/networking/server.h>
@@ -87,11 +88,31 @@ static void handle_cpe_extentry(void* arg, tc_thread_pool_task_priority_t priori
     session->ext_cpe_versions[extension_index / 4] |= ((extension_version & 0x3) << (extension_index % 4 * 2));
 
     if (session->remaining_cpe_ext_packets == 0) {
+        // check if custom blocks extension is supported
+        if (tc_server_get_extension_version(session, TC_CPE_CUSTOM_BLOCKS_EXTENSION_INDEX) >= 0) {
+            // send the servers custom block support level
+            if(!tc_cpe_send_custom_block_support_level(session->client_socket, TC_CPE_CUSTOM_BLOCKS_MAX_SUPPORT_LEVEL)) {
+                tc_server_kick_session(session, "Could not send custom block support level packet.");
+                return;
+            }
+            return; //do not finalize the player identification yet
+        }
         finalize_player_identification(session, priority);
     } else {
         session->remaining_cpe_ext_packets--;
         tc_server_protocol_handler_cleanup(session, tc_server_client_listen_task, priority);
     }
+}
+
+static void handle_cpe_custom_block_support_level(void* arg, tc_thread_pool_task_priority_t priority) {
+    tc_session_t* session = (tc_session_t*)arg;
+    TC_ASSERT(session->supports_cpe, "Session does not support CPE.");
+
+    session->custom_block_support_level = session->pending_packet_buffer[1];
+
+    TC_LOG_SESSION(log_info, session, "Received CPE custom block support level packet (support level: %d)", session->custom_block_support_level);
+
+    finalize_player_identification(session, priority);
 }
 
 static void finalize_player_identification(tc_session_t* session, tc_thread_pool_task_priority_t priority) {
@@ -171,11 +192,13 @@ static void handle_player_identification(void* arg, tc_thread_pool_task_priority
 const psize tc_packet_data_sizes[TC_PACKET_HANDLERS_MAX_PACKETS] = {
     [TC_PACKET_CPE_EXTINFO] = 66, // CPE extinfo packet
     [TC_PACKET_CPE_EXTENTRY] = 68, // CPE extentry packet
+    [TC_PACKET_CPE_CUSTOM_BLOCK_SUPPORT_LEVEL] = 2, // CPE custom block support level packet
     [TC_PACKET_PLAYER_IDENTIFICATION] = 130 // player identification packet 
 };
 
 const tc_thread_pool_task_t tc_packet_handlers[TC_PACKET_HANDLERS_MAX_PACKETS] = { 
     [TC_PACKET_CPE_EXTINFO] = handle_cpe_extinfo,
     [TC_PACKET_CPE_EXTENTRY] = handle_cpe_extentry,
+    [TC_PACKET_CPE_CUSTOM_BLOCK_SUPPORT_LEVEL] = handle_cpe_custom_block_support_level,
     [TC_PACKET_PLAYER_IDENTIFICATION] = handle_player_identification,
 };

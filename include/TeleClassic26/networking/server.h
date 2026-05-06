@@ -32,6 +32,7 @@ typedef struct tc_session {
 
     pint id;
     pshort remaining_cpe_ext_packets;
+    pchar custom_block_support_level;
 } tc_session_t;
 
 typedef struct tc_server {

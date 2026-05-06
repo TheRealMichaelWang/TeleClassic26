@@ -9,6 +9,8 @@
 #define TC_PACKET_CPE_EXTINFO 0x10
 #define TC_PACKET_CPE_EXTENTRY 0x11
 
+#define TC_PACKET_CPE_CUSTOM_BLOCK_SUPPORT_LEVEL 0x13
+
 #define TC_PACKET_PLAYER_IDENTIFICATION 0x00
 
 // NOTE: all packet sizes must be greater than 0
