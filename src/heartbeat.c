@@ -109,6 +109,9 @@ void tc_heartbeat_manager_finalize(tc_heartbeat_manager_t* manager) {
 
     p_uthread_join(manager->heartbeat_thread);
     p_uthread_unref(manager->heartbeat_thread);
+
+    log_info("Heartbeat manager thread finished.");
+
     p_tree_free(manager->auth_tree);
     p_mutex_free(manager->lock);
 
@@ -135,6 +138,7 @@ void tc_heartbeat_manager_start(tc_heartbeat_manager_t* manager) {
 
 // Stops the heartbeat manager
 void tc_heartbeat_manager_stop(tc_heartbeat_manager_t* manager) {
+    log_info("Stopping heartbeat manager...");
     manager->shutdown = TRUE;
     p_mutex_unlock(manager->lock);
 }

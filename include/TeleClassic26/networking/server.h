@@ -5,6 +5,7 @@
 #include <TeleClassic26/thread_pool.h>
 #include <TeleClassic26/networking/protocol.h>
 #include <TeleClassic26/authentication/heartbeat.h>
+#include <TeleClassic26/gameplay/world.h>
 
 #define TC_SERVER_MAX_SESSIONS 128
 #define TC_SERVER_PING_INTERVAL 15000000 //15 seconds in microseconds
@@ -23,6 +24,7 @@ typedef struct tc_session {
 
     PTimeProfiler* ping_profiler;
     tc_heartbeat_service_t* authenticated_service;
+    tc_joinable_interface_t* current_joinable;
 
     pchar *pending_packet_buffer;
     psize pending_packet_buffer_size;
@@ -42,6 +44,8 @@ typedef struct tc_server {
 
     tc_thread_pool_t thread_pool;
     tc_heartbeat_manager_t heartbeat_manager;
+
+    tc_join_router_t join_router;
 
     pchar motd[TC_PROTOCOL_MAX_STR_LEN];
 

@@ -96,8 +96,14 @@ void tc_server_finalize(tc_server_t *server) {
     tc_heartbeat_manager_finalize(&server->heartbeat_manager);
 }
 
+// disconnects and disposes of a session
 static void disconnect_session(tc_session_t* session) {
     TC_LOG_SESSION(log_info, session, "Disconnecting session %d...", session->id);
+
+    if (session->current_joinable) {
+        session->current_joinable->leave(session->current_joinable, session);
+        session->current_joinable = NULL;
+    }
 
     // free the pending packet buffer
     if (session->pending_packet_buffer) {
@@ -297,6 +303,7 @@ static void handle_new_session(tc_server_t* server, PSocket* client_socket) {
     session->pending_packet_buffer_size = 0;
     session->supports_cpe = FALSE;
     session->authenticated_service = NULL;
+    session->current_joinable = NULL;
     session->remaining_cpe_ext_packets = -1;
     session->custom_block_support_level = 0;
     memset(session->ext_cpe_versions, 0, sizeof(session->ext_cpe_versions));
@@ -376,6 +383,7 @@ void tc_server_stop(tc_server_t *server) {
         return;
     }
 
+    log_info("Stopping server...");
     tc_heartbeat_manager_stop(&server->heartbeat_manager);
     tc_thread_pool_stop(&server->thread_pool);
 }

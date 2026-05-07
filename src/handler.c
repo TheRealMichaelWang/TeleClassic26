@@ -3,7 +3,9 @@
 #include <TeleClassic26/networking/handler.h>
 #include <TeleClassic26/networking/protocol.h>
 #include <TeleClassic26/networking/server.h>
+#include <TeleClassic26/gameplay/world.h>
 #include <TeleClassic26/log.h>
+#include <string.h>
 
 static void finalize_player_identification(tc_session_t* session, tc_thread_pool_task_priority_t priority);
 
@@ -129,7 +131,7 @@ static void finalize_player_identification(tc_session_t* session, tc_thread_pool
 
     tc_server_protocol_handler_cleanup(session, NULL, priority);
 
-    pboolean schedule_success = tc_thread_schedule_new(
+    /*pboolean schedule_success = tc_thread_schedule_new(
         &session->server->thread_pool,
         tc_server_client_listen_task,
         session,
@@ -138,11 +140,13 @@ static void finalize_player_identification(tc_session_t* session, tc_thread_pool
     if (!schedule_success) {
         tc_server_kick_session(session, "Server is Busy: Please try again or come back soon.");
         return;
-    }
+    }*/
 
     p_atomic_int_inc(&session->server->active_players);
+    TC_LOG_SESSION(log_info, session, "Finished handshake successfully.");
 
-    TC_LOG_SESSION(log_info, session, "Finished handshake (no CPE) successfully.");
+    // join the default/lobby
+    tc_session_join(session, NULL);
 }
 
 static void handle_player_identification(void* arg, tc_thread_pool_task_priority_t priority) {
