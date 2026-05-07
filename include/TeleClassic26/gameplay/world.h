@@ -45,7 +45,7 @@ typedef struct tc_joinable_interface {
 
 typedef struct tc_join_router {
     PList* joinables;
-    PMutex* lock;
+    PRWLock* lock;
 
     tc_joinable_interface_t* default_joinable;
 

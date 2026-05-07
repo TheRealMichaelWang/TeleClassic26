@@ -169,6 +169,8 @@ pboolean tc_map_load(tc_map_t *map, const pchar *path)
     }
 
     memset(map, 0, sizeof(tc_map_t));
+    map->is_dirty = FALSE;
+
     nbt_node *n;
 
     n = nbt_expect(root, "ClassicWorld.FormatVersion", TAG_BYTE);
@@ -456,6 +458,9 @@ fail:
 
 pboolean tc_map_save(tc_map_t *map, const pchar *path)
 {
+    if (!map->is_dirty) { return TRUE; }
+    map->is_dirty = FALSE;
+
     nbt_node *root = nbt_make_compound("ClassicWorld");
     if (!root) { return FALSE; }
 
@@ -620,4 +625,184 @@ pboolean tc_map_save(tc_map_t *map, const pchar *path)
 fail:
     nbt_free(root);
     return FALSE;
+}
+
+/*
+Map Cache and Evicion Implementation
+*/
+pboolean tc_map_cache_init(tc_map_cache_t* cache, psize memory_usage_threshold) {
+    cache->memory_usage = 0;
+    cache->head = NULL;
+    cache->clock_hand = NULL;
+    cache->num_entries = 0;
+    cache->id_to_index = p_tree_new(P_TREE_TYPE_RB, (PCompareFunc)strcmp);
+    if (!cache->id_to_index) { return FALSE; }
+    cache->lock = p_rwlock_new();
+    if (!cache->lock) { 
+        p_tree_free(cache->id_to_index);
+        return FALSE; 
+    }
+    cache->memory_usage_threshold = memory_usage_threshold;
+    return TRUE;
+}
+
+void tc_map_cache_finalize(tc_map_cache_t* cache) {
+    tc_map_cache_entry_t* entry = cache->head;
+    while (entry) {
+        tc_map_cache_entry_t* next = entry->next;
+        tc_map_finalize(&entry->map);
+        p_rwlock_free(entry->lock);
+        p_free(entry->key);
+        p_free(entry);
+        entry = next;
+    }
+
+    p_tree_free(cache->id_to_index);
+    p_rwlock_free(cache->lock);
+}
+
+// please make sure to write lock the cache before calling this function!!!
+static void tc_map_cache_evict(tc_map_cache_t* cache) {
+    if (cache->head == NULL) { return; }
+    if (cache->clock_hand == NULL) {
+        cache->clock_hand = cache->head;
+    } 
+
+    // only one pass because we want to avoid thrashing
+    pint max_iters = cache->num_entries;
+    tc_map_cache_entry_t* current_entry = cache->head;
+    for(pint i = 0; i < max_iters; i++) {
+        if (current_entry == NULL) { current_entry = cache->head; }
+
+        p_rwlock_writer_lock(current_entry->lock);
+        if (current_entry->open_count == 0) {
+            if (current_entry->is_referenced) { //mark as not referenced
+                current_entry->is_referenced = FALSE;
+                current_entry = current_entry->next;
+            } else { //evict the map
+                p_tree_remove(cache->id_to_index, (ppointer)current_entry->key);
+                tc_map_finalize(&current_entry->map);
+                cache->memory_usage -= current_entry->memory_usage;
+                cache->num_entries--;
+
+                tc_map_cache_entry_t* next = current_entry->next;
+                // unlink from the doubly linked list
+                if (current_entry->prev) {
+                    current_entry->prev->next = current_entry->next;
+                } else {
+                    cache->head = current_entry->next;
+                }
+                if (current_entry->next) {
+                    current_entry->next->prev = current_entry->prev;
+                }
+                // advance the clock hand past the evicted entry
+                if (cache->clock_hand == current_entry) {
+                    cache->clock_hand = next;
+                }
+
+                p_rwlock_writer_unlock(current_entry->lock);
+                p_rwlock_free(current_entry->lock);
+                p_free(current_entry->key);
+                p_free(current_entry);
+
+                if (cache->memory_usage < cache->memory_usage_threshold) {
+                    if (cache->clock_hand == NULL) { cache->clock_hand = cache->head; }
+                    return;
+                }
+                current_entry = next;
+            }
+        } else {
+            p_rwlock_writer_unlock(current_entry->lock);
+            current_entry = current_entry->next;
+        }
+    }
+}
+
+tc_map_t* tc_map_cache_open(tc_map_cache_t* cache, const pchar* name) {
+    p_rwlock_reader_lock(cache->lock);
+    tc_map_cache_entry_t* list_entry = (tc_map_cache_entry_t*)p_tree_lookup(cache->id_to_index, name);
+    
+    if (!list_entry) { //map not found, perform a compulsory load
+        p_rwlock_reader_unlock(cache->lock);
+        tc_map_cache_entry_t* entry = (tc_map_cache_entry_t*)p_malloc(sizeof(tc_map_cache_entry_t));
+        if (!entry) {
+            return NULL; //failed to allocate memory for entry
+        }
+        entry->lock = p_rwlock_new();
+        if (!entry->lock) {
+            p_free(entry);
+            return NULL;
+        }
+        entry->key = p_strdup(name);
+        if (!entry->key) {
+            p_rwlock_free(entry->lock);
+            p_free(entry);
+            return NULL;
+        }
+        if (!tc_map_load(&entry->map, name)) {
+            p_rwlock_free(entry->lock);
+            p_free(entry->key);
+            p_free(entry);
+            return NULL; //failed to load map
+        }
+        
+        entry->open_count = 1; //protect against immediate eviction
+        entry->is_referenced = TRUE;
+        entry->next = NULL;
+        entry->prev = NULL;
+        entry->memory_usage = tc_map_get_memory_usage(&entry->map); //calculate memory usage
+
+        p_rwlock_writer_lock(cache->lock);
+
+        // Re-check under the writer lock: another thread may have raced us
+        // and already loaded the same map between our reader-unlock above
+        // and this writer-lock.
+        tc_map_cache_entry_t* existing = (tc_map_cache_entry_t*)p_tree_lookup(cache->id_to_index, name);
+        if (existing) {
+            p_rwlock_writer_lock(existing->lock);
+            existing->open_count++;
+            existing->is_referenced = TRUE;
+            p_rwlock_writer_unlock(existing->lock);
+            p_rwlock_writer_unlock(cache->lock);
+
+            tc_map_finalize(&entry->map);
+            p_rwlock_free(entry->lock);
+            p_free(entry->key);
+            p_free(entry);
+            return &existing->map;
+        }
+
+        //add to the head of the list
+        entry->next = cache->head;
+        if (cache->head) { cache->head->prev = entry; }
+        cache->head = entry;
+        //update memory usage
+        cache->memory_usage += entry->memory_usage;
+        cache->num_entries++;
+        p_tree_insert(cache->id_to_index, (ppointer)entry->key, (ppointer)entry);
+
+        if (cache->memory_usage > cache->memory_usage_threshold) { //eviction time!
+            tc_map_cache_evict(cache);
+        }
+
+        p_rwlock_writer_unlock(cache->lock);
+        return &entry->map;
+    } else {
+        p_rwlock_writer_lock(list_entry->lock);
+        list_entry->open_count++;
+        list_entry->is_referenced = TRUE; //mark reference bit
+        p_rwlock_writer_unlock(list_entry->lock);
+
+        p_rwlock_reader_unlock(cache->lock);
+        return &list_entry->map;
+    }
+}
+
+void tc_map_cache_close(tc_map_cache_t* cache, tc_map_t* map) {
+    // do not do any eviction logic here, it should be handled by the cache itself
+    tc_map_cache_entry_t* list_entry = (tc_map_cache_entry_t*)map;
+
+    p_rwlock_writer_lock(list_entry->lock);
+    list_entry->open_count--;
+    p_rwlock_writer_unlock(list_entry->lock);
 }

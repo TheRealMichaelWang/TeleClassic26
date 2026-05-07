@@ -11,7 +11,7 @@
 
 pboolean tc_join_router_init(tc_join_router_t* router, PList* joinables, const char* default_joinable_name) {
     router->joinables = joinables;
-    router->lock = p_mutex_new();
+    router->lock = p_rwlock_new();
     router->stopped = FALSE;
     router->default_joinable = NULL;
     if (router->lock == NULL) {
@@ -28,7 +28,7 @@ void tc_join_router_finalize(tc_join_router_t* router) {
         tc_join_router_stop_all(router);
     }
     p_list_free(router->joinables);
-    p_mutex_free(router->lock);
+    p_rwlock_free(router->lock);
 }
 
 static void stop_joinable(void* ppointer, void* userdata) {
@@ -37,7 +37,7 @@ static void stop_joinable(void* ppointer, void* userdata) {
 }
 
 void tc_join_router_stop_all(tc_join_router_t* router) {
-    p_mutex_lock(router->lock);
+    p_rwlock_writer_lock(router->lock);
 
     if (router->stopped) {
         return;
@@ -45,7 +45,7 @@ void tc_join_router_stop_all(tc_join_router_t* router) {
     router->stopped = TRUE;
 
     p_list_foreach(router->joinables, stop_joinable, NULL);
-    p_mutex_unlock(router->lock);
+    p_rwlock_writer_unlock(router->lock);
 }
 
 typedef struct find_joinable_userdata {
@@ -72,7 +72,7 @@ tc_joinable_interface_t* tc_find_joinable(tc_join_router_t* router, const pchar*
         return router->default_joinable;
     }
 
-    p_mutex_lock(router->lock);
+    p_rwlock_reader_lock(router->lock);
     if (router->stopped) {
         return NULL;
     }
@@ -83,7 +83,7 @@ tc_joinable_interface_t* tc_find_joinable(tc_join_router_t* router, const pchar*
     };
     p_list_foreach(router->joinables, find_joinable_callback, &userdata);
 
-    p_mutex_unlock(router->lock);
+    p_rwlock_reader_unlock(router->lock);
     return userdata.best_match;
 }
 
