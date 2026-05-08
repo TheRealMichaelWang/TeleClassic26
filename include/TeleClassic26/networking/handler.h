@@ -1,8 +1,8 @@
 #ifndef TELECLASSIC26_NETWORKING_HANDLER_H
 #define TELECLASSIC26_NETWORKING_HANDLER_H
 
-#include "TeleClassic26/gameplay/world.h"
 #include <plibsys.h>
+#include <TeleClassic26/gameplay/joinable.h>
 #include <TeleClassic26/thread_pool.h>
 
 #define TC_PACKET_HANDLERS_MAX_PACKETS 32

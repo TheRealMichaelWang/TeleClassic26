@@ -3,7 +3,7 @@
 
 #include "plibsys.h"
 #include <string.h>
-#include <TeleClassic26/gameplay/world.h>
+#include <TeleClassic26/gameplay/joinable.h>
 #include <TeleClassic26/networking/server.h>
 #include <TeleClassic26/networking/protocol.h>
 #include <TeleClassic26/utils.h>

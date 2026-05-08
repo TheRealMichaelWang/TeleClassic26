@@ -8,7 +8,7 @@ add_executable(${PROJECT_NAME}
     utils.c
     log.c
     map.c
-    world.c
+    joinable.c
 )
 
 target_include_directories(${PROJECT_NAME} PRIVATE

@@ -5,7 +5,7 @@
 #include <TeleClassic26/thread_pool.h>
 #include <TeleClassic26/networking/protocol.h>
 #include <TeleClassic26/authentication/heartbeat.h>
-#include <TeleClassic26/gameplay/world.h>
+#include <TeleClassic26/gameplay/joinable.h>
 #include <TeleClassic26/gameplay/map.h>
 
 #define TC_SERVER_MAX_SESSIONS 128
