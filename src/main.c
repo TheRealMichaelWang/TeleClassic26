@@ -35,7 +35,10 @@ pboolean run_server(void) {
         8080, 128, 2, 
         heartbeat_services, 
         sizeof(heartbeat_services) / sizeof(tc_heartbeat_service_t), 
-        heartbeat_info
+        heartbeat_info,
+        1 << 30, //1 GB
+        NULL,
+        "lobby"
     );
     if (!init_success) {
         log_fatal("Failed to initialize server");

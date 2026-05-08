@@ -6,6 +6,7 @@
 #include <TeleClassic26/networking/protocol.h>
 #include <TeleClassic26/authentication/heartbeat.h>
 #include <TeleClassic26/gameplay/world.h>
+#include <TeleClassic26/gameplay/map.h>
 
 #define TC_SERVER_MAX_SESSIONS 128
 #define TC_SERVER_PING_INTERVAL 15000000 //15 seconds in microseconds
@@ -46,6 +47,7 @@ typedef struct tc_server {
     tc_heartbeat_manager_t heartbeat_manager;
 
     tc_join_router_t join_router;
+    tc_map_cache_t map_cache;
 
     pchar motd[TC_PROTOCOL_MAX_STR_LEN];
 
@@ -71,7 +73,10 @@ pboolean tc_server_init(
     pint reserved_threads,
     tc_heartbeat_service_t* heartbeat_services,
     pint num_heartbeat_services,
-    tc_heartbeat_info_t heartbeat_info
+    tc_heartbeat_info_t heartbeat_info,
+    psize map_cache_memory_usage_threshold,
+    PList* joinables,
+    const char* default_joinable_name
 );
 
 // Finalize the server

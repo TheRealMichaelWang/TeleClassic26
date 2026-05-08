@@ -16,7 +16,10 @@ pboolean tc_server_init(
     pint reserved_threads,
     tc_heartbeat_service_t* heartbeat_services,
     pint num_heartbeat_services,
-    tc_heartbeat_info_t heartbeat_info
+    tc_heartbeat_info_t heartbeat_info,
+    psize map_cache_memory_usage_threshold,
+    PList* joinables,
+    const char* default_joinable_name
 ) {
     log_info("Initializing server...");
 
@@ -65,6 +68,25 @@ pboolean tc_server_init(
         p_socket_address_free(server->address);
         return FALSE;
     }
+    if (!tc_map_cache_init(&server->map_cache, map_cache_memory_usage_threshold)) {
+        log_error("Failed to initialize map cache");
+        tc_thread_pool_stop(&server->thread_pool);
+        tc_thread_pool_finalize(&server->thread_pool);
+        p_socket_free(server->listener_socket);
+        p_socket_address_free(server->address);
+        tc_heartbeat_manager_finalize(&server->heartbeat_manager);
+        return FALSE;
+    }
+    if (!tc_join_router_init(&server->join_router, joinables, default_joinable_name)) {
+        log_error("Failed to initialize join router");
+        tc_thread_pool_stop(&server->thread_pool);
+        tc_thread_pool_finalize(&server->thread_pool);
+        p_socket_free(server->listener_socket);
+        p_socket_address_free(server->address);
+        tc_heartbeat_manager_finalize(&server->heartbeat_manager);
+        tc_map_cache_finalize(&server->map_cache);
+        return FALSE;
+    }
 
     server->lock = p_mutex_new();
 
@@ -94,6 +116,8 @@ void tc_server_finalize(tc_server_t *server) {
 
     tc_thread_pool_finalize(&server->thread_pool);
     tc_heartbeat_manager_finalize(&server->heartbeat_manager);
+    tc_join_router_finalize(&server->join_router);
+    tc_map_cache_finalize(&server->map_cache);
 }
 
 // disconnects and disposes of a session

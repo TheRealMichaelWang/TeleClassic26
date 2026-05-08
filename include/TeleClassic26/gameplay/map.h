@@ -114,7 +114,7 @@ typedef struct tc_map {
 
 #define TELECLASSIC26_MAP_BLOCK_INDEX(map, x, y, z) (y * map->z_size + z) * map->x_size + x
 
-inline pshort tc_map_get_block_index(tc_map_t *map, pshort x, pshort y, pshort z) {
+static inline pshort tc_map_get_block_index(tc_map_t *map, pshort x, pshort y, pshort z) {
     psize index = TELECLASSIC26_MAP_BLOCK_INDEX(map, x, y, z);
     pshort block = map->block_array[index] & 0xFF;
     if (map->block_array2) {
@@ -124,7 +124,7 @@ inline pshort tc_map_get_block_index(tc_map_t *map, pshort x, pshort y, pshort z
     return block;
 }
 
-inline void tc_map_set_block_index(tc_map_t *map, pshort x, pshort y, pshort z, pshort block) {
+static inline void tc_map_set_block_index(tc_map_t *map, pshort x, pshort y, pshort z, pshort block) {
     psize index = TELECLASSIC26_MAP_BLOCK_INDEX(map, x, y, z);
     map->is_dirty = TRUE;
     if (map->block_array2) {
@@ -135,7 +135,7 @@ inline void tc_map_set_block_index(tc_map_t *map, pshort x, pshort y, pshort z, 
     map->block_array[index] = block & 0xFF;
 }
 
-inline psize tc_map_get_memory_usage(tc_map_t *map) {
+static inline psize tc_map_get_memory_usage(tc_map_t *map) {
     psize block_array_size = map->x_size * map->y_size * map->z_size;
     return sizeof(tc_map_t)
         + (map->block_array2 ? (block_array_size * 10) / 8: block_array_size) //blocks
