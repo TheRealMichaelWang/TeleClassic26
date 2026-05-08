@@ -26,7 +26,7 @@ typedef struct tc_joinable_interface {
     // handles a set block request
     // - see classic protocol docs on wiki.vg for details
     // - return: TRUE if the set block request was handled, FALSE otherwise
-    pboolean (*handle_set_block)(void* this_context, tc_session_t* session, pshort x, pshort y, pshort z, pshort block);
+    pboolean (*handle_set_block)(void* this_context, tc_session_t* session, pshort x, pshort y, pshort z, pchar mode, pshort block);
 
     // handles a position and orientation update
     // - see classic protocol docs on wiki.vg for details

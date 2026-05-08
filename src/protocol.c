@@ -8,6 +8,8 @@
 const tc_cpe_extension_t tc_supported_extensions[TC_CPE_EXTENSION_MAX_SUPPORTED] = {
     [TC_CPE_CUSTOM_BLOCKS_EXTENSION_INDEX] = { .name = "CustomBlocks", .version = 1 },
     [TC_CPE_BLOCK_DEFINITIONS_EXTENSION_INDEX] = { .name = "BlockDefinitions", .version = 1 },
+    [TC_CPE_EXTENDED_BLOCKS_EXTENSION_INDEX] = { .name = "ExtendedBlocks", .version = 1 },
+    [TC_CPE_EXTENDED_TEXTURES_EXTENSION_INDEX] = { .name = "ExtendedTextures", .version = 1 },
 };
 
 pboolean tc_protocol_send_byte(PSocket* socket, const pchar opcode) {

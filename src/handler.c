@@ -91,7 +91,7 @@ static void handle_cpe_extentry(void* arg, tc_thread_pool_task_priority_t priori
 
     if (session->remaining_cpe_ext_packets == 0) {
         // check if custom blocks extension is supported
-        if (tc_server_get_extension_version(session, TC_CPE_CUSTOM_BLOCKS_EXTENSION_INDEX) >= 0) {
+        if (tc_session_get_extension_version(session, TC_CPE_CUSTOM_BLOCKS_EXTENSION_INDEX) >= 0) {
             // send the servers custom block support level
             if(!tc_cpe_send_custom_block_support_level(session->client_socket, TC_CPE_CUSTOM_BLOCKS_MAX_SUPPORT_LEVEL)) {
                 tc_server_kick_session(session, "Could not send custom block support level packet.");
@@ -193,16 +193,85 @@ static void handle_player_identification(void* arg, tc_thread_pool_task_priority
     }
 }
 
-const psize tc_packet_data_sizes[TC_PACKET_HANDLERS_MAX_PACKETS] = {
+static void handle_player_set_block(void* arg, tc_thread_pool_task_priority_t priority) {
+    tc_session_t* session = (tc_session_t*)arg;
+
+    pshort x = tc_protocol_decode_short(&session->pending_packet_buffer[0]);
+    pshort y = tc_protocol_decode_short(&session->pending_packet_buffer[2]);
+    pshort z = tc_protocol_decode_short(&session->pending_packet_buffer[4]);
+    pchar mode = session->pending_packet_buffer[6];
+
+    pshort block;
+    if (tc_session_get_extension_version(session, TC_CPE_CUSTOM_BLOCKS_EXTENSION_INDEX) >= 0) {
+        block = tc_protocol_decode_short(&session->pending_packet_buffer[7]);
+    } else {
+        block = session->pending_packet_buffer[7];
+    }
+
+    if (session->current_joinable) {
+        if(!session->current_joinable->handle_set_block(session->current_joinable, session, x, y, z, mode, block)) {
+            tc_server_kick_session(session, "Failed to handle set block request.");
+            return;
+        }
+    } else {
+        TC_LOG_SESSION(log_error, session, "Client sent an invalid set block packet");
+        tc_server_kick_session(session, "Client cannot currently set blocks.");
+        return;
+    }
+
+    tc_server_protocol_handler_cleanup(session, tc_server_client_listen_task, priority);
+}
+
+static void handle_player_position_and_orientation_update(void* arg, tc_thread_pool_task_priority_t priority) {
+    tc_session_t* session = (tc_session_t*)arg;
+    
+    psize offset = tc_session_get_extension_version(session, TC_CPE_CUSTOM_BLOCKS_EXTENSION_INDEX) >= 0 ? 2 : 1;
+    pshort x = tc_protocol_decode_short(&session->pending_packet_buffer[offset]);
+    pshort y = tc_protocol_decode_short(&session->pending_packet_buffer[offset + 2]);
+    pshort z = tc_protocol_decode_short(&session->pending_packet_buffer[offset + 4]);
+    pchar heading = session->pending_packet_buffer[offset + 6];
+    pchar pitch = session->pending_packet_buffer[offset + 7];
+
+    if (session->current_joinable) {
+        if(!session->current_joinable->handle_position_update(session->current_joinable, session, x, y, z, heading, pitch)) {
+            tc_server_kick_session(session, "Failed to handle position and orientation update request.");
+            return;
+        }
+    } else {
+        TC_LOG_SESSION(log_error, session, "Client sent invalid position and orientation update packet");
+        tc_server_kick_session(session, "Client cannot currently update their position and orientation.");
+        return;
+    }
+
+    tc_server_protocol_handler_cleanup(session, tc_server_client_listen_task, priority);
+}
+
+static const psize tc_packet_data_sizes[TC_PACKET_HANDLERS_MAX_PACKETS] = {
     [TC_PACKET_CPE_EXTINFO] = 66, // CPE extinfo packet
     [TC_PACKET_CPE_EXTENTRY] = 68, // CPE extentry packet
-    [TC_PACKET_CPE_CUSTOM_BLOCK_SUPPORT_LEVEL] = 2, // CPE custom block support level packet
-    [TC_PACKET_PLAYER_IDENTIFICATION] = 130 // player identification packet 
+    [TC_PACKET_CPE_CUSTOM_BLOCK_SUPPORT_LEVEL] = 1, // CPE custom block support level packet
+    [TC_INBOUND_PACKET_PLAYER_IDENTIFICATION] = 130, // player identification packet 
+    [TC_INBOUND_PACKET_PLAYER_SET_BLOCK] = 8, // player set block packet
+    [TC_INBOUND_PACKET_POSITION_AND_ORIENTATION_UPDATE] = 9 // position and orientation update packet
 };
 
 const tc_thread_pool_task_t tc_packet_handlers[TC_PACKET_HANDLERS_MAX_PACKETS] = { 
     [TC_PACKET_CPE_EXTINFO] = handle_cpe_extinfo,
     [TC_PACKET_CPE_EXTENTRY] = handle_cpe_extentry,
     [TC_PACKET_CPE_CUSTOM_BLOCK_SUPPORT_LEVEL] = handle_cpe_custom_block_support_level,
-    [TC_PACKET_PLAYER_IDENTIFICATION] = handle_player_identification,
+    [TC_INBOUND_PACKET_PLAYER_IDENTIFICATION] = handle_player_identification,
 };
+
+psize tc_packet_data_size(pint opcode, tc_session_t* session) {
+    if (tc_session_get_extension_version(session, TC_CPE_CUSTOM_BLOCKS_EXTENSION_INDEX) >= 0) {
+        switch (opcode) {
+        case TC_INBOUND_PACKET_PLAYER_SET_BLOCK:
+            return 9; // 2 (short) + 2 (short) + 2(short) + 1 (byte) + 2(short)
+        case TC_INBOUND_PACKET_POSITION_AND_ORIENTATION_UPDATE:
+            return 10; // 2 (short) + 2 (fshort) + 2 (fshort) + 2 (fshort) + 1 (byte) + 1 (byte)
+        default:
+            break;
+        }
+    }
+    return tc_packet_data_sizes[opcode];
+}

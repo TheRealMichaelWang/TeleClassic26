@@ -232,7 +232,7 @@ void tc_server_client_listen_task(void *arg, tc_thread_pool_task_priority_t prio
             }
 
             // allocate the buffer for the packet data
-            psize packet_buffer_size = tc_packet_data_sizes[session->pending_packet_opcode];
+            psize packet_buffer_size = tc_packet_data_size(session->pending_packet_opcode, session);
             session->pending_packet_buffer = p_malloc(packet_buffer_size);
             session->pending_packet_buffer_size = 0;
             if (session->pending_packet_buffer == NULL) {
@@ -247,7 +247,7 @@ void tc_server_client_listen_task(void *arg, tc_thread_pool_task_priority_t prio
             return;
         }
     } else {
-        psize packet_buffer_size = tc_packet_data_sizes[session->pending_packet_opcode];
+        psize packet_buffer_size = tc_packet_data_size(session->pending_packet_opcode, session);
 
         PError *error = NULL;
         psize read_size = p_socket_receive(
@@ -412,7 +412,7 @@ void tc_server_stop(tc_server_t *server) {
     tc_thread_pool_stop(&server->thread_pool);
 }
 
-pint tc_server_get_extension_version(tc_session_t* session, const pint extension_index) {
+pint tc_session_get_extension_version(tc_session_t* session, const pint extension_index) {
     if (extension_index < 0 || extension_index >= TC_CPE_EXTENSION_MAX_SUPPORTED) {
         return -1;
     }

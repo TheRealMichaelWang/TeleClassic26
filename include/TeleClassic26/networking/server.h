@@ -118,6 +118,6 @@ void tc_server_client_listen_task(void *arg, tc_thread_pool_task_priority_t prio
 // - session: the session to get the extension version from
 // - extension_index: the index of the extension to get the version of
 // - return: the version of the extension, -1 if not found
-pint tc_server_get_extension_version(tc_session_t* session, const pint extension_index);
+pint tc_session_get_extension_version(tc_session_t* session, const pint extension_index);
 
 #endif /* TELECLASSIC26_SERVER_H */
