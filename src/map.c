@@ -1,3 +1,4 @@
+#include "TeleClassic26/log.h"
 #include "plibsys.h"
 #include <nbt.h>
 #include <TeleClassic26/gameplay/map.h>
@@ -680,6 +681,7 @@ static void tc_map_cache_evict(tc_map_cache_t* cache) {
                 current_entry->is_referenced = FALSE;
                 current_entry = current_entry->next;
             } else { //evict the map
+                log_info("Evicting map %s from memory...", current_entry->key);
                 p_tree_remove(cache->id_to_index, (ppointer)current_entry->key);
                 tc_map_finalize(&current_entry->map);
                 cache->memory_usage -= current_entry->memory_usage;
@@ -707,7 +709,7 @@ static void tc_map_cache_evict(tc_map_cache_t* cache) {
 
                 if (cache->memory_usage < cache->memory_usage_threshold) {
                     if (cache->clock_hand == NULL) { cache->clock_hand = cache->head; }
-                    return;
+                    break;
                 }
                 current_entry = next;
             }
@@ -716,6 +718,8 @@ static void tc_map_cache_evict(tc_map_cache_t* cache) {
             current_entry = current_entry->next;
         }
     }
+
+    log_info("Map eviction complete (memory pressure: %zu/%zu bytes)", cache->memory_usage, cache->memory_usage_threshold);
 }
 
 tc_map_t* tc_map_cache_open(tc_map_cache_t* cache, const pchar* name) {
@@ -724,22 +728,42 @@ tc_map_t* tc_map_cache_open(tc_map_cache_t* cache, const pchar* name) {
     
     if (!list_entry) { //map not found, perform a compulsory load
         p_rwlock_reader_unlock(cache->lock);
+
+        p_rwlock_writer_lock(cache->lock);
+        // Re-check under the writer lock: another thread may have raced us
+        // and already loaded the same map between our reader-unlock above
+        // and this writer-lock.
+        tc_map_cache_entry_t* existing = (tc_map_cache_entry_t*)p_tree_lookup(cache->id_to_index, name);
+        if (existing) {
+            p_rwlock_writer_lock(existing->lock);
+            existing->open_count++;
+            existing->is_referenced = TRUE;
+            p_rwlock_writer_unlock(existing->lock);
+            p_rwlock_writer_unlock(cache->lock);
+            return &existing->map;
+        }
+
+        log_info("Loading map from file: %s", name);
         tc_map_cache_entry_t* entry = (tc_map_cache_entry_t*)p_malloc(sizeof(tc_map_cache_entry_t));
         if (!entry) {
+            log_error("Failed to allocate memory for map from file: %s", name);
             return NULL; //failed to allocate memory for entry
         }
         entry->lock = p_rwlock_new();
         if (!entry->lock) {
+            log_error("Failed to allocate memory for map from file: %s", name);
             p_free(entry);
             return NULL;
         }
         entry->key = p_strdup(name);
         if (!entry->key) {
+            log_error("Failed to allocate memory for map from file: %s", name);
             p_rwlock_free(entry->lock);
             p_free(entry);
             return NULL;
         }
         if (!tc_map_load(&entry->map, name)) {
+            log_error("Failed to load map from file %s", name);
             p_rwlock_free(entry->lock);
             p_free(entry->key);
             p_free(entry);
@@ -752,26 +776,6 @@ tc_map_t* tc_map_cache_open(tc_map_cache_t* cache, const pchar* name) {
         entry->prev = NULL;
         entry->memory_usage = tc_map_get_memory_usage(&entry->map); //calculate memory usage
 
-        p_rwlock_writer_lock(cache->lock);
-
-        // Re-check under the writer lock: another thread may have raced us
-        // and already loaded the same map between our reader-unlock above
-        // and this writer-lock.
-        tc_map_cache_entry_t* existing = (tc_map_cache_entry_t*)p_tree_lookup(cache->id_to_index, name);
-        if (existing) {
-            p_rwlock_writer_lock(existing->lock);
-            existing->open_count++;
-            existing->is_referenced = TRUE;
-            p_rwlock_writer_unlock(existing->lock);
-            p_rwlock_writer_unlock(cache->lock);
-
-            tc_map_finalize(&entry->map);
-            p_rwlock_free(entry->lock);
-            p_free(entry->key);
-            p_free(entry);
-            return &existing->map;
-        }
-
         //add to the head of the list
         entry->next = cache->head;
         if (cache->head) { cache->head->prev = entry; }
@@ -781,6 +785,11 @@ tc_map_t* tc_map_cache_open(tc_map_cache_t* cache, const pchar* name) {
         cache->num_entries++;
         p_tree_insert(cache->id_to_index, (ppointer)entry->key, (ppointer)entry);
 
+        log_info(
+            "Map %s successfully loaded from file %s (memory pressure: %zu/%zu bytes)", 
+            entry->map.name, name, 
+            cache->memory_usage, cache->memory_usage_threshold
+        );
         if (cache->memory_usage > cache->memory_usage_threshold) { //eviction time!
             tc_map_cache_evict(cache);
         }
