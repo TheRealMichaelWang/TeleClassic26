@@ -13,7 +13,8 @@ pboolean tc_server_init(
     const char* hostname, 
     pint port, 
     pint listener_backlog,
-    pint reserved_threads,
+    psize reserved_threads,
+    psize max_blocking_threads,
     tc_heartbeat_service_t* heartbeat_services,
     pint num_heartbeat_services,
     tc_heartbeat_info_t heartbeat_info,
@@ -47,7 +48,7 @@ pboolean tc_server_init(
         return FALSE;
     }
 
-    if (!tc_thread_pool_init(&server->thread_pool, "AABAABC", reserved_threads)) {
+    if (!tc_thread_pool_init(&server->thread_pool, "AABAABC", reserved_threads, max_blocking_threads)) {
         log_error("Failed to initialize thread pool");
         p_socket_free(server->listener_socket);
         p_socket_address_free(server->address);

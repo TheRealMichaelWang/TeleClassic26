@@ -32,7 +32,7 @@ pboolean run_server(void) {
     int init_success = tc_server_init(
         server, 
         "0.0.0.0", 
-        8080, 128, 2, 
+        8080, 128, 2, 2,
         heartbeat_services, 
         sizeof(heartbeat_services) / sizeof(tc_heartbeat_service_t), 
         heartbeat_info,

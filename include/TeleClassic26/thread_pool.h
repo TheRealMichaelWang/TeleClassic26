@@ -6,12 +6,13 @@
 // Constants that determine the max size of buffers; feel free to modify
 #define TC_THREADS_MAX_BUFFER_SIZE 64 
 #define TC_THREADS_MAX_THREADS 16
-#define TC_THREAD_POOL_MAX_PRIORITY 3
+#define TC_THREAD_POOL_MAX_PRIORITY 4
 
 typedef enum tc_thread_pool_task_priority {
     TC_THREAD_POOL_TASK_PRIORITY_HIGH = 0,
     TC_THREAD_POOL_TASK_PRIORITY_MEDIUM = 1,
-    TC_THREAD_POOL_TASK_PRIORITY_LOW = 2
+    TC_THREAD_POOL_TASK_PRIORITY_LOW = 2,
+    TC_THREAD_POOL_TASK_PRIORITY_BLOCKING = 3
 } tc_thread_pool_task_priority_t;
 
 typedef void (*tc_thread_pool_task_t)(void *arg, tc_thread_pool_task_priority_t priority);
@@ -29,7 +30,7 @@ typedef struct tc_thread_pool_task_buf {
 } tc_thread_pool_task_buf_t;
 
 typedef struct tc_thread_pool {
-    tc_thread_pool_task_buf_t task_prio_buffer[3];
+    tc_thread_pool_task_buf_t task_prio_buffer[TC_THREAD_POOL_MAX_PRIORITY];
 
     PUThread *thread_buffer[TC_THREADS_MAX_THREADS];
 
@@ -40,7 +41,16 @@ typedef struct tc_thread_pool {
     
     psize num_threads;
     psize round_robin_index;
+    
+    // number of worker threads
     pint active_threads;
+
+    // number of worker threads currently running a blocking task
+    psize blocking_active;
+
+    // cap on how many worker threads may simultaneously be running a blocking task
+    psize max_blocking_threads;
+
     pboolean shutdown;
 } tc_thread_pool_t;
 
@@ -48,8 +58,15 @@ typedef struct tc_thread_pool {
 // - return: TRUE if the thread pool was initialized, FALSE otherwise
 // - round_robin_pattern: the pattern to use for round robin scheduling (i.e "AABAABC")
 // - reserved_threads: number of threads to reserve for other purposes outside of the thread pool
-// NOTE: round_robin_pattern must be a cstring consisting of the characters 'A'=high, 'B'=medium, and 'C'=low
-pboolean tc_thread_pool_init(tc_thread_pool_t *pool, const pchar* round_robin_pattern, psize reserved_threads);
+// - max_blocking_threads: max number of worker threads that may concurrently run
+//   TC_THREAD_POOL_TASK_PRIORITY_BLOCKING tasks (clamped to num_threads)
+// NOTE: round_robin_pattern must be a cstring consisting of the characters 'A'=high, 'B'=medium, 'C'=low, and 'D'=blocking
+pboolean tc_thread_pool_init(
+    tc_thread_pool_t *pool,
+    const pchar* round_robin_pattern,
+    psize reserved_threads,
+    psize max_blocking_threads
+);
 
 // Finalize the thread pool
 // - waits for the thread pool to be stopped

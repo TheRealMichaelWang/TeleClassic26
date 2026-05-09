@@ -21,10 +21,24 @@ static pboolean task_buffer_is_empty(tc_thread_pool_task_buf_t *task_buf) {
     return task_buf->head_index == task_buf->tail_index;
 }
 
-// check if the thread pool has tasks
+// whether the buffer at `priority_index` currently has runnable work for a
+// worker; the blocking buffer is hidden once we've hit the concurrent-blocking
+// cap so other workers don't busy-pick it just to sit on the lock.
+static pboolean buffer_eligible(tc_thread_pool_t *pool, pint priority_index) {
+    if (task_buffer_is_empty(&pool->task_prio_buffer[priority_index])) {
+        return FALSE;
+    }
+    if (priority_index == TC_THREAD_POOL_TASK_PRIORITY_BLOCKING &&
+        pool->blocking_active >= pool->max_blocking_threads) {
+        return FALSE;
+    }
+    return TRUE;
+}
+
+// check if the thread pool has tasks that a worker can currently run
 static pboolean thread_pool_has_tasks(tc_thread_pool_t *pool) {
     for (pint i = 0; i < TC_THREAD_POOL_MAX_PRIORITY; i++) {
-        if (!task_buffer_is_empty(&pool->task_prio_buffer[i])) {
+        if (buffer_eligible(pool, i)) {
             return TRUE;
         }
     }
@@ -39,11 +53,13 @@ static pboolean task_buffer_enqueue(
     tc_thread_pool_t *pool,
     tc_thread_pool_task_buf_t *task_buf, 
     tc_thread_pool_context_t *task, 
-    pboolean is_yield
+    pboolean is_yield,
+    pboolean is_blocking
 ) {
     psize remaining_capacity = task_buffer_remaining_capacity(task_buf);
     // we reserve pool->num_threads tasks in each thread buffer for yeild continuations
-    if (!is_yield && remaining_capacity <= pool->num_threads) { 
+    psize reserved_capacity = is_blocking ? pool->max_blocking_threads : pool->num_threads;
+    if (!is_yield && remaining_capacity <= reserved_capacity) { 
         return FALSE; // only yeild continuations are allowed to schedule new tasks
     }
 
@@ -80,7 +96,7 @@ static tc_thread_pool_context_t task_pool_dequeue(tc_thread_pool_t *pool) {
     pint current_buffer_index = current_buffer - 'A';
 
     for (pint i = 0; i < TC_THREAD_POOL_MAX_PRIORITY; i++) {
-        if (!task_buffer_is_empty(&pool->task_prio_buffer[current_buffer_index])) {
+        if (buffer_eligible(pool, current_buffer_index)) {
             return task_buffer_dequeue(&pool->task_prio_buffer[current_buffer_index]);
         }
         current_buffer_index += 1;
@@ -108,8 +124,12 @@ static void* thread_pool_worker(void *arg) {
 
         // dequeue a task from the thread pool
         tc_thread_pool_context_t task = task_pool_dequeue(pool);
+        pboolean is_blocking = (task.priority == TC_THREAD_POOL_TASK_PRIORITY_BLOCKING);
 
         pool->active_threads++;
+        if (is_blocking) {
+            pool->blocking_active++;
+        }
         p_mutex_unlock(pool->lock);
 
         // execute the task
@@ -117,6 +137,12 @@ static void* thread_pool_worker(void *arg) {
 
         p_mutex_lock(pool->lock);
         pool->active_threads--;
+        if (is_blocking) {
+            pool->blocking_active--;
+            // a blocking slot just freed; wake a worker that may have ignored
+            // the blocking buffer because it was at capacity.
+            p_cond_variable_signal(pool->not_empty);
+        }
         if (pool->shutdown && pool->active_threads == 0 && !thread_pool_has_tasks(pool)) {
             p_cond_variable_broadcast(pool->not_empty);
         }
@@ -124,7 +150,12 @@ static void* thread_pool_worker(void *arg) {
 }
 
 // initialize the thread pool
-pboolean tc_thread_pool_init(tc_thread_pool_t *pool, const pchar* round_robin_pattern, psize reserved_threads) {
+pboolean tc_thread_pool_init(
+    tc_thread_pool_t *pool,
+    const pchar* round_robin_pattern,
+    psize reserved_threads,
+    psize max_blocking_threads
+) {
     pint num_threads = p_uthread_ideal_count();
     if (reserved_threads >= num_threads) {
         log_error("Failed to initialize thread pool: reserved threads (%d) is greater than or equal to ideal threads (%d)", reserved_threads, num_threads);
@@ -151,6 +182,8 @@ pboolean tc_thread_pool_init(tc_thread_pool_t *pool, const pchar* round_robin_pa
     }
     pool->shutdown = FALSE;
     pool->active_threads = 0;
+    pool->blocking_active = 0;
+    pool->max_blocking_threads = max_blocking_threads;
 
     for (int i = 0; i < TC_THREAD_POOL_MAX_PRIORITY; i++) {
         init_task_buffer(&pool->task_prio_buffer[i]);
@@ -224,7 +257,8 @@ pboolean tc_thread_schedule_new(
         pool, 
         &pool->task_prio_buffer[priority], 
         &task, 
-        FALSE
+        FALSE,
+        priority == TC_THREAD_POOL_TASK_PRIORITY_BLOCKING
     );
     if (!enqueue_success) {
         p_mutex_unlock(pool->lock);
@@ -261,7 +295,8 @@ void tc_thread_schedule_next(
         pool, 
         &pool->task_prio_buffer[current_priority], 
         &task, 
-        TRUE
+        TRUE,
+        current_priority == TC_THREAD_POOL_TASK_PRIORITY_BLOCKING
     );
     TC_ASSERT(enqueue_success, "Failed to enqueue next task in task chain");
 
