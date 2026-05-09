@@ -22,13 +22,13 @@ typedef struct tc_thread_pool_context {
     void *arg;
 } tc_thread_pool_context_t;
 
-typedef struct {
+typedef struct tc_thread_pool_task_buf {
     tc_thread_pool_context_t buffer[TC_THREADS_MAX_BUFFER_SIZE];
     psize head_index;
     psize tail_index;
 } tc_thread_pool_task_buf_t;
 
-typedef struct {
+typedef struct tc_thread_pool {
     tc_thread_pool_task_buf_t task_prio_buffer[3];
 
     PUThread *thread_buffer[TC_THREADS_MAX_THREADS];
