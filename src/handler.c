@@ -52,7 +52,7 @@ static void handle_cpe_extinfo(void* arg, tc_thread_pool_task_priority_t priorit
     tc_protocol_decode_string(appname, &session->pending_packet_buffer[1]);
 
     // read extension count
-    pshort extension_count = tc_protocol_decode_short(&session->pending_packet_buffer[1 + TC_PROTOCOL_MAX_STR_LEN]);
+    pint16 extension_count = tc_protocol_decode_short(&session->pending_packet_buffer[1 + TC_PROTOCOL_MAX_STR_LEN]);
     session->remaining_cpe_ext_packets = extension_count;
 
     TC_LOG_SESSION(log_info, session, "Received CPE extinfo packet (app: %.*s, extension count: %d)", TC_PROTOCOL_MAX_STR_LEN, appname, extension_count);
@@ -77,7 +77,7 @@ static void handle_cpe_extentry(void* arg, tc_thread_pool_task_priority_t priori
         return;
     }
 
-    pint extension_version = tc_protocol_decode_int(&session->pending_packet_buffer[1 + TC_PROTOCOL_MAX_STR_LEN]);
+    pint32 extension_version = tc_protocol_decode_int(&session->pending_packet_buffer[1 + TC_PROTOCOL_MAX_STR_LEN]);
     if (extension_version < 1 || extension_version > 3) {
         tc_server_kick_session(session, "Invalid extension version: TeleClassic26 only supports extensions 1-3.");
         return;
@@ -196,12 +196,12 @@ static void handle_player_identification(void* arg, tc_thread_pool_task_priority
 static void handle_player_set_block(void* arg, tc_thread_pool_task_priority_t priority) {
     tc_session_t* session = (tc_session_t*)arg;
 
-    pshort x = tc_protocol_decode_short(&session->pending_packet_buffer[0]);
-    pshort y = tc_protocol_decode_short(&session->pending_packet_buffer[2]);
-    pshort z = tc_protocol_decode_short(&session->pending_packet_buffer[4]);
+    pint16 x = tc_protocol_decode_short(&session->pending_packet_buffer[0]);
+    pint16 y = tc_protocol_decode_short(&session->pending_packet_buffer[2]);
+    pint16 z = tc_protocol_decode_short(&session->pending_packet_buffer[4]);
     pchar mode = session->pending_packet_buffer[6];
 
-    pshort block;
+    pint16 block;
     if (tc_session_get_extension_version(session, TC_CPE_CUSTOM_BLOCKS_EXTENSION_INDEX) >= 0) {
         block = tc_protocol_decode_short(&session->pending_packet_buffer[7]);
     } else {
@@ -226,9 +226,9 @@ static void handle_player_position_and_orientation_update(void* arg, tc_thread_p
     tc_session_t* session = (tc_session_t*)arg;
     
     psize offset = tc_session_get_extension_version(session, TC_CPE_CUSTOM_BLOCKS_EXTENSION_INDEX) >= 0 ? 2 : 1;
-    pshort x = tc_protocol_decode_short(&session->pending_packet_buffer[offset]);
-    pshort y = tc_protocol_decode_short(&session->pending_packet_buffer[offset + 2]);
-    pshort z = tc_protocol_decode_short(&session->pending_packet_buffer[offset + 4]);
+    pint16 x = tc_protocol_decode_short(&session->pending_packet_buffer[offset]);
+    pint16 y = tc_protocol_decode_short(&session->pending_packet_buffer[offset + 2]);
+    pint16 z = tc_protocol_decode_short(&session->pending_packet_buffer[offset + 4]);
     pchar heading = session->pending_packet_buffer[offset + 6];
     pchar pitch = session->pending_packet_buffer[offset + 7];
 

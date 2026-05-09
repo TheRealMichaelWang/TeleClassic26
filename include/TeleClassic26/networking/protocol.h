@@ -36,13 +36,13 @@ pboolean tc_protocol_send_byte(PSocket* socket, const pchar opcode);
 // - socket: the socket to send the short to
 // - short: the short to send
 // - return: TRUE if the short was sent, FALSE otherwise
-pboolean tc_protocol_send_short(PSocket* socket, const int16_t data);
+pboolean tc_protocol_send_short(PSocket* socket, const puint16 data);
 
 // sends an integer to the socket
 // - socket: the socket to send the integer to
 // - integer: the integer to send
 // - return: TRUE if the integer was sent, FALSE otherwise
-pboolean tc_protocol_send_int(PSocket* socket, const int32_t data);
+pboolean tc_protocol_send_int(PSocket* socket, const pint32 data);
 
 // sends a string to the socket
 // - socket: the socket to send the string to
@@ -54,13 +54,13 @@ pboolean tc_protocol_send_string(PSocket* socket, const pchar str[]);
 // - dest_buffer: the buffer to write the decoded short to
 // - packet_buffer: must be a ptr to addr within packet_data buffer
 // NOTE: this writes out a max of 2 bytes to the dest_buffer
-int16_t tc_protocol_decode_short(pchar* packet_buffer);
+pint16 tc_protocol_decode_short(pchar* packet_buffer);
 
 // decodes an integer from a packet buffer
 // - dest_buffer: the buffer to write the decoded integer to
 // - packet_buffer: must be a ptr to addr within packet_data buffer
 // NOTE: this writes out a max of 4 bytes to the dest_buffer
-int32_t tc_protocol_decode_int(pchar* packet_buffer);
+pint32 tc_protocol_decode_int(pchar* packet_buffer);
 
 // decodes a string from a packet buffer
 // - dest_buffer: the buffer to write the decoded string to
@@ -105,6 +105,25 @@ pboolean tc_cpe_send_extentry(PSocket* session, const pchar extension_name[TC_PR
 // - support_level: the support level to send the packet to
 // - return: TRUE if the packet was sent, FALSE otherwise
 pboolean tc_cpe_send_custom_block_support_level(PSocket* session, pchar support_level);
+
+// sends a level initialize packet
+// - session: the session to send the packet to
+// - return: TRUE if the packet was sent, FALSE otherwise
+pboolean tc_cpe_send_level_initialize(PSocket* session);
+
+// sends a level data chunk packet
+// - session: the session to send the packet to
+// - data: the data to send the packet to
+// - return: TRUE if the packet was sent, FALSE otherwise
+pboolean tc_cpe_send_level_data_chunk(PSocket* session, const pchar data[]);
+
+// sends a level finalize packet
+// - session: the session to send the packet to
+// - x size: the size of the x chunk to send the packet to
+// - y size: the size of the y chunk to send the packet to
+// - z size: the size of the z chunk to send the packet to
+// - return: TRUE if the packet was sent, FALSE otherwise
+pboolean tc_cpe_send_level_finalize(PSocket* session, pint16 x_size, pint16 y_size, pint16 z_size);
 
 // Gets the index of a supported extension by name
 // - extension_name: the name of the extension to get the index of

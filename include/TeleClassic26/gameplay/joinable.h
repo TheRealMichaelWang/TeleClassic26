@@ -26,12 +26,12 @@ typedef struct tc_joinable_interface {
     // handles a set block request
     // - see classic protocol docs on wiki.vg for details
     // - return: TRUE if the set block request was handled, FALSE otherwise
-    pboolean (*handle_set_block)(void* this_context, tc_session_t* session, pshort x, pshort y, pshort z, pchar mode, pshort block);
+    pboolean (*handle_set_block)(void* this_context, tc_session_t* session, pint16 x, pint16 y, pint16 z, pchar mode, pint16 block);
 
     // handles a position and orientation update
     // - see classic protocol docs on wiki.vg for details
     // - return: TRUE if the position and orientation update was handled, FALSE otherwise
-    pboolean (*handle_position_update)(void* this_context, tc_session_t* session, pshort x, pshort y, pshort z, pchar heading, pchar pitch);
+    pboolean (*handle_position_update)(void* this_context, tc_session_t* session, pint16 x, pint16 y, pint16 z, pchar heading, pchar pitch);
 
     // handles a message from the player
     // - message: the message to handle

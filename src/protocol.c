@@ -27,7 +27,7 @@ pboolean tc_protocol_send_byte(PSocket* socket, const pchar opcode) {
     return is_waiting;
 }
 
-pboolean tc_protocol_send_short(PSocket* socket, const int16_t data) {
+pboolean tc_protocol_send_short(PSocket* socket, const puint16 data) {
     pchar high = data >> 8;
     pchar low = data & 0xFF;
 
@@ -40,7 +40,7 @@ pboolean tc_protocol_send_short(PSocket* socket, const int16_t data) {
     return TRUE;
 }
 
-pboolean tc_protocol_send_int(PSocket* socket, const int32_t data) {
+pboolean tc_protocol_send_int(PSocket* socket, const pint32 data) {
     for (pint i = 0; i < sizeof(int32_t); i++) {
         pchar byte = (data >> (i * 8)) & 0xFF;
         if (!tc_protocol_send_byte(socket, byte)) {
@@ -50,11 +50,11 @@ pboolean tc_protocol_send_int(PSocket* socket, const int32_t data) {
     return TRUE;
 }
 
-int16_t tc_protocol_decode_short(pchar* packet_buffer) {
+pint16 tc_protocol_decode_short(pchar* packet_buffer) {
     return (packet_buffer[0] << 8) | packet_buffer[1];
 }
 
-int32_t tc_protocol_decode_int(pchar* packet_buffer) {
+pint32 tc_protocol_decode_int(pchar* packet_buffer) {
     return (packet_buffer[0] << 24) | (packet_buffer[1] << 16) | (packet_buffer[2] << 8) | packet_buffer[3];
 }
 
