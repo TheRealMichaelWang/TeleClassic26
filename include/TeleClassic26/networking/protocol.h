@@ -115,7 +115,7 @@ pboolean tc_cpe_send_level_initialize(PSocket* session);
 // - session: the session to send the packet to
 // - data: the data to send the packet to
 // - return: TRUE if the packet was sent, FALSE otherwise
-pboolean tc_cpe_send_level_data_chunk(PSocket* session, const pchar data[]);
+pboolean tc_cpe_send_level_data_chunk(PSocket* session, pint16 chunk_length, const pchar chunk_data[1024], pchar percent_complete);
 
 // sends a level finalize packet
 // - session: the session to send the packet to

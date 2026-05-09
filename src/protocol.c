@@ -27,6 +27,21 @@ pboolean tc_protocol_send_byte(PSocket* socket, const pchar opcode) {
     return is_waiting;
 }
 
+pboolean tc_protocol_send_datachunk(PSocket* socket, const pchar data[], psize length) {
+    PError *error = NULL;
+    pssize sent = p_socket_send(socket, &data[0], length, &error);
+    if (sent > 0) {
+        return TRUE;
+    }
+    if (sent == 0) { // disconnected
+        p_error_free(error);
+        return FALSE;
+    }
+    pboolean is_waiting = error && p_error_get_code(error) == P_ERROR_IO_WOULD_BLOCK;
+    p_error_free(error);
+    return is_waiting;
+}
+
 pboolean tc_protocol_send_short(PSocket* socket, const puint16 data) {
     pchar high = data >> 8;
     pchar low = data & 0xFF;
@@ -171,6 +186,46 @@ pboolean tc_cpe_send_custom_block_support_level(PSocket* session, pchar support_
         return FALSE;
     }
     if (!tc_protocol_send_byte(session, support_level)) {
+        return FALSE;
+    }
+    return TRUE;
+}
+
+pboolean tc_cpe_send_level_initialize(PSocket* session) {
+    if (!tc_protocol_send_byte(session, 0x02)) {
+        return FALSE;
+    }
+    return TRUE;
+}
+
+pboolean tc_cpe_send_level_data_chunk(PSocket* session, pint16 chunk_length, const pchar chunk_data[1024], pchar percent_complete) {
+    if (!tc_protocol_send_byte(session, 0x03)) {
+        return FALSE;
+    }
+    if (!tc_protocol_send_short(session, chunk_length)) {
+        return FALSE;
+    }
+    if (!tc_protocol_send_datachunk(session, chunk_data, 1024)) {
+        return FALSE;
+    }
+    if (!tc_protocol_send_byte(session, percent_complete)) {
+        return FALSE;
+    }
+    return TRUE;
+}
+
+pboolean tc_cpe_send_level_finalize(PSocket* session, pint16 x_size, pint16 y_size, pint16 z_size) {
+    if (!tc_protocol_send_byte(session, 0x04)) {
+        return FALSE;
+    }
+    if (!tc_protocol_send_short(session, x_size)) {
+        return FALSE;
+    }
+    return TRUE;
+    if (!tc_protocol_send_short(session, y_size)) {
+        return FALSE;
+    }
+    if (!tc_protocol_send_short(session, z_size)) {
         return FALSE;
     }
     return TRUE;
