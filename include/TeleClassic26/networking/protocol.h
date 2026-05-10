@@ -10,12 +10,13 @@
 #define TC_PROTOCOL_USER_TYPE_OPERATOR 0x64
 #define TC_PROTOCOL_USER_TYPE_STANDARD 0x00
 
-#define TC_CPE_EXTENSION_MAX_SUPPORTED 4
+#define TC_CPE_EXTENSION_MAX_SUPPORTED 5
 
 #define TC_CPE_CUSTOM_BLOCKS_EXTENSION_INDEX 0
 #define TC_CPE_BLOCK_DEFINITIONS_EXTENSION_INDEX 1
 #define TC_CPE_EXTENDED_BLOCKS_EXTENSION_INDEX 2
 #define TC_CPE_EXTENDED_TEXTURES_EXTENSION_INDEX 3
+#define TC_CPE_MESSAGE_TYPES_EXTENSION_INDEX 4
 
 #define TC_CPE_CUSTOM_BLOCKS_MAX_SUPPORT_LEVEL 1
 
@@ -105,6 +106,13 @@ pboolean tc_cpe_send_extentry(PSocket* session, const pchar extension_name[TC_PR
 // - support_level: the support level to send the packet to
 // - return: TRUE if the packet was sent, FALSE otherwise
 pboolean tc_cpe_send_custom_block_support_level(PSocket* session, pchar support_level);
+
+// sends a message to the session
+// - session: the session to send the message to
+// - player_id: the id of the player (always 0 unless CPE MessageTypes extension is supported)
+// - message: the message to send (must be less or equal to 64 characters)
+// - return: TRUE if the message was sent, FALSE otherwise
+pboolean tc_send_message(PSocket* session, pchar player_id, const pchar message[]);
 
 // sends a level initialize packet
 // - session: the session to send the packet to

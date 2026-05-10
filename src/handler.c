@@ -260,6 +260,8 @@ const tc_thread_pool_task_t tc_packet_handlers[TC_PACKET_HANDLERS_MAX_PACKETS] =
     [TC_PACKET_CPE_EXTENTRY] = handle_cpe_extentry,
     [TC_PACKET_CPE_CUSTOM_BLOCK_SUPPORT_LEVEL] = handle_cpe_custom_block_support_level,
     [TC_INBOUND_PACKET_PLAYER_IDENTIFICATION] = handle_player_identification,
+    [TC_INBOUND_PACKET_PLAYER_SET_BLOCK] = handle_player_set_block,
+    [TC_INBOUND_PACKET_POSITION_AND_ORIENTATION_UPDATE] = handle_player_position_and_orientation_update,
 };
 
 psize tc_packet_data_size(pint opcode, tc_session_t* session) {

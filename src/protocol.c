@@ -10,6 +10,7 @@ const tc_cpe_extension_t tc_supported_extensions[TC_CPE_EXTENSION_MAX_SUPPORTED]
     [TC_CPE_BLOCK_DEFINITIONS_EXTENSION_INDEX] = { .name = "BlockDefinitions", .version = 1 },
     [TC_CPE_EXTENDED_BLOCKS_EXTENSION_INDEX] = { .name = "ExtendedBlocks", .version = 1 },
     [TC_CPE_EXTENDED_TEXTURES_EXTENSION_INDEX] = { .name = "ExtendedTextures", .version = 1 },
+    [TC_CPE_MESSAGE_TYPES_EXTENSION_INDEX] = { .name = "MessageTypes", .version = 1 },
 };
 
 pboolean tc_protocol_send_byte(PSocket* socket, const pchar opcode) {
@@ -186,6 +187,19 @@ pboolean tc_cpe_send_custom_block_support_level(PSocket* session, pchar support_
         return FALSE;
     }
     if (!tc_protocol_send_byte(session, support_level)) {
+        return FALSE;
+    }
+    return TRUE;
+}
+
+pboolean tc_send_message(PSocket* session, pchar player_id, const pchar message[]) {
+    if (!tc_protocol_send_byte(session, 0x0d)) {
+        return FALSE;
+    }
+    if (!tc_protocol_send_byte(session, player_id)) {
+        return FALSE;
+    }
+    if (!tc_protocol_send_string(session, message)) {
         return FALSE;
     }
     return TRUE;

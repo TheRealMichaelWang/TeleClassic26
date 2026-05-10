@@ -6,6 +6,7 @@ add_executable(${PROJECT_NAME}
     handler.c
     heartbeat.c
     utils.c
+    api.c
     log.c
     map.c
     joinable.c
