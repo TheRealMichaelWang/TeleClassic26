@@ -48,7 +48,7 @@ pboolean tc_server_init(
         return FALSE;
     }
 
-    if (!tc_thread_pool_init(&server->thread_pool, "ACABABAABABCCD", reserved_threads, max_blocking_threads)) {
+    if (!tc_thread_pool_init(&server->thread_pool, "AABAABCD", reserved_threads, max_blocking_threads)) {
         log_error("Failed to initialize thread pool");
         p_socket_free(server->listener_socket);
         p_socket_address_free(server->address);
