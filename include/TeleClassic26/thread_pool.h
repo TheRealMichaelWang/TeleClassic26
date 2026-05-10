@@ -4,7 +4,7 @@
 #include <plibsys.h>
 
 // Constants that determine the max size of buffers; feel free to modify
-#define TC_THREADS_MAX_BUFFER_SIZE 64 
+#define TC_THREADS_STD_BUFFER_SIZE 128 
 #define TC_THREADS_MAX_THREADS 16
 #define TC_THREAD_POOL_MAX_PRIORITY 4
 
@@ -24,12 +24,19 @@ typedef struct tc_thread_pool_context {
 } tc_thread_pool_context_t;
 
 typedef struct tc_thread_pool_task_buf {
-    tc_thread_pool_context_t buffer[TC_THREADS_MAX_BUFFER_SIZE];
+    tc_thread_pool_context_t* buffer;
     psize head_index;
     psize tail_index;
+
+    psize capacity;
 } tc_thread_pool_task_buf_t;
 
 typedef struct tc_thread_pool {
+    tc_thread_pool_context_t high_prio_buffer[TC_THREADS_STD_BUFFER_SIZE / 2];
+    tc_thread_pool_context_t medium_prio_buffer[TC_THREADS_STD_BUFFER_SIZE];
+    tc_thread_pool_context_t low_prio_buffer[TC_THREADS_STD_BUFFER_SIZE * 2];
+    tc_thread_pool_context_t blocking_prio_buffer[TC_THREADS_STD_BUFFER_SIZE];
+
     tc_thread_pool_task_buf_t task_prio_buffer[TC_THREAD_POOL_MAX_PRIORITY];
 
     PUThread *thread_buffer[TC_THREADS_MAX_THREADS];

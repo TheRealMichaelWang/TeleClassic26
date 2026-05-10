@@ -4,15 +4,17 @@
 #include <TeleClassic26/log.h>
 
 // initialize a task buffer
-static void init_task_buffer(tc_thread_pool_task_buf_t *task_buf) {
+static void init_task_buffer(tc_thread_pool_task_buf_t *task_buf, tc_thread_pool_context_t* buffer, psize capacity) {
     task_buf->head_index = 0;
     task_buf->tail_index = 0;
+    task_buf->buffer = buffer;
+    task_buf->capacity = capacity;
 }
 
 // get the remaining capacity of the task buffer
 static psize task_buffer_remaining_capacity(tc_thread_pool_task_buf_t *task_buf) {
-    psize used = (task_buf->head_index + TC_THREADS_MAX_BUFFER_SIZE - task_buf->tail_index) % TC_THREADS_MAX_BUFFER_SIZE;
-    psize remaining = (TC_THREADS_MAX_BUFFER_SIZE - 1) - used;
+    psize used = (task_buf->head_index + task_buf->capacity - task_buf->tail_index) % task_buf->capacity;
+    psize remaining = (task_buf->capacity - 1) - used;
     return remaining;
 }
 
@@ -63,7 +65,7 @@ static pboolean task_buffer_enqueue(
         return FALSE; // only yeild continuations are allowed to schedule new tasks
     }
 
-    psize next_head = (task_buf->head_index + 1) % TC_THREADS_MAX_BUFFER_SIZE;
+    psize next_head = (task_buf->head_index + 1) % task_buf->capacity;
     if (next_head == task_buf->tail_index) {
         return FALSE;
     }
@@ -79,7 +81,7 @@ static tc_thread_pool_context_t task_buffer_dequeue(tc_thread_pool_task_buf_t *t
         return (tc_thread_pool_context_t){.func = NULL, .arg = NULL, .priority = TC_THREAD_POOL_TASK_PRIORITY_LOW};
     }
     tc_thread_pool_context_t task = task_buf->buffer[task_buf->tail_index];
-    task_buf->tail_index = (task_buf->tail_index + 1) % TC_THREADS_MAX_BUFFER_SIZE;
+    task_buf->tail_index = (task_buf->tail_index + 1) % task_buf->capacity;
     return task;
 }
 
@@ -185,9 +187,11 @@ pboolean tc_thread_pool_init(
     pool->blocking_active = 0;
     pool->max_blocking_threads = max_blocking_threads;
 
-    for (int i = 0; i < TC_THREAD_POOL_MAX_PRIORITY; i++) {
-        init_task_buffer(&pool->task_prio_buffer[i]);
-    }
+    init_task_buffer(&pool->task_prio_buffer[TC_THREAD_POOL_TASK_PRIORITY_HIGH], pool->high_prio_buffer, TC_THREADS_STD_BUFFER_SIZE / 2);
+    init_task_buffer(&pool->task_prio_buffer[TC_THREAD_POOL_TASK_PRIORITY_MEDIUM], pool->medium_prio_buffer, TC_THREADS_STD_BUFFER_SIZE);
+    init_task_buffer(&pool->task_prio_buffer[TC_THREAD_POOL_TASK_PRIORITY_LOW], pool->low_prio_buffer, 2 * TC_THREADS_STD_BUFFER_SIZE);
+    init_task_buffer(&pool->task_prio_buffer[TC_THREAD_POOL_TASK_PRIORITY_BLOCKING], pool->blocking_prio_buffer, TC_THREADS_STD_BUFFER_SIZE);
+
     log_info("Creating %d worker threads...", num_threads);
     for (pint i = 0; i < num_threads; i++) {
         log_info("Creating worker thread %d...", i + 1);
