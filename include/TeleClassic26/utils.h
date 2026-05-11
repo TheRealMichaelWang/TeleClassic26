@@ -18,8 +18,8 @@
             : "N/A"                                                          \
     )
 
-struct send_buffer {
-    pchar* data;
+typedef struct send_buffer {
+    puint8* data;
     psize size;
 } send_buffer_t;
 
@@ -27,5 +27,19 @@ struct send_buffer {
 pint tc_string_compare(pconstpointer str1, pconstpointer str2, ppointer data);
 
 // Gzips a byte array
+// - input: the byte array to gzip
+// - input_size: the size of the input byte array
+// - output: the send buffer to store the gziped byte array
+// returns TRUE on success, FALSE on failure
+// NOTE: input_size is written as a big endian 32-bit integer at the beginning of compression stream
+pboolean tc_gzip_byte_array(puint8* input, psize input_size, send_buffer_t* output);
+
+// Deflates a byte array
+// - input: the byte array to deflate
+// - input_size: the size of the input byte array
+// - output: the send buffer to store the deflated byte array
+// returns TRUE on success, FALSE on failure
+// NOTE: input_size is not written at the beginning of the compression stream
+pboolean tc_deflate_byte_array(puint8* input, psize input_size, send_buffer_t* output);
 
 #endif /* TELECLASSIC26_UTILS_H */
