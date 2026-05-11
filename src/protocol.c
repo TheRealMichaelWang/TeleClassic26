@@ -198,7 +198,7 @@ pboolean tc_cpe_send_custom_block_support_level(PSocket* session, pchar support_
     return TRUE;
 }
 
-pboolean tc_cpe_send_set_map_env_url(PSocket* session, const pchar texture_url[]) {
+pboolean tc_cpe_send_set_texture_url(PSocket* session, const pchar texture_url[]) {
     if (!tc_protocol_send_byte(session, 0x28)) {
         return FALSE;
     }
@@ -279,7 +279,7 @@ pboolean tc_cpe_send_set_env_color(PSocket* session, pchar color_field, pint16 r
     TC_ASSERT(red >= 0 && red <= 255, "Red value must be between 0 and 255");
     TC_ASSERT(green >= 0 && green <= 255, "Green value must be between 0 and 255");
     TC_ASSERT(blue >= 0 && blue <= 255, "Blue value must be between 0 and 255");
-    
+
     if (!tc_protocol_send_byte(session, 0x2d)) {
         return FALSE;
     }
@@ -312,14 +312,14 @@ pboolean tc_send_message(PSocket* session, pint8 player_id, const pchar message[
     return TRUE;
 }
 
-pboolean tc_cpe_send_level_initialize(PSocket* session) {
+pboolean tc_send_level_initialize(PSocket* session) {
     if (!tc_protocol_send_byte(session, 0x02)) {
         return FALSE;
     }
     return TRUE;
 }
 
-pboolean tc_cpe_send_level_initialize2(PSocket* session, pint32 block_count) {
+pboolean tc_send_level_initialize2(PSocket* session, pint32 block_count) {
     if (!tc_protocol_send_byte(session, 0x02)) {
         return FALSE;
     }
@@ -329,7 +329,7 @@ pboolean tc_cpe_send_level_initialize2(PSocket* session, pint32 block_count) {
     return TRUE;
 }
 
-pboolean tc_cpe_send_level_data_chunk(PSocket* session, puint16 chunk_length, const pchar chunk_data[1024], pchar percent_complete) {
+pboolean tc_send_level_data_chunk(PSocket* session, puint16 chunk_length, const pchar chunk_data[1024], pchar percent_complete) {
     if (!tc_protocol_send_byte(session, 0x03)) {
         return FALSE;
     }
@@ -345,7 +345,7 @@ pboolean tc_cpe_send_level_data_chunk(PSocket* session, puint16 chunk_length, co
     return TRUE;
 }
 
-pboolean tc_cpe_send_level_finalize(PSocket* session, pint16 x_size, pint16 y_size, pint16 z_size) {
+pboolean tc_send_level_finalize(PSocket* session, pint16 x_size, pint16 y_size, pint16 z_size) {
     if (!tc_protocol_send_byte(session, 0x04)) {
         return FALSE;
     }

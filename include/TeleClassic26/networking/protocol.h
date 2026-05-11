@@ -116,7 +116,7 @@ pboolean tc_cpe_send_custom_block_support_level(PSocket* session, pchar support_
 // - session: the session to send the packet to
 // - texture_url: the url of the texture to send the packet to
 // - return: TRUE if the packet was sent, FALSE otherwise
-pboolean tc_cpe_send_set_map_env_url(PSocket* session, const pchar texture_url[]);
+pboolean tc_cpe_send_set_texture_url(PSocket* session, const pchar texture_url[]);
 
 
 
@@ -202,19 +202,19 @@ pboolean tc_send_message(PSocket* session, pint8 player_id, const pchar message[
 // sends a level initialize packet
 // - session: the session to send the packet to
 // - return: TRUE if the packet was sent, FALSE otherwise
-pboolean tc_cpe_send_level_initialize(PSocket* session);
+pboolean tc_send_level_initialize(PSocket* session);
 
 // sends a level initialize packet (use this with FastMap CPE enabled)
 // - session: the session to send the packet to
 // - block_count: the number of blocks to send the packet to
 // - return: TRUE if the packet was sent, FALSE otherwise
-pboolean tc_cpe_send_level_initialize2(PSocket* session, pint32 block_count);
+pboolean tc_send_level_initialize2(PSocket* session, pint32 block_count);
 
 // sends a level data chunk packet
 // - session: the session to send the packet to
 // - data: the data to send the packet to
 // - return: TRUE if the packet was sent, FALSE otherwise
-pboolean tc_cpe_send_level_data_chunk(PSocket* session, puint16 chunk_length, const pchar chunk_data[1024], pchar percent_complete);
+pboolean tc_send_level_data_chunk(PSocket* session, puint16 chunk_length, const pchar chunk_data[1024], pchar percent_complete);
 
 // sends a level finalize packet
 // - session: the session to send the packet to
@@ -222,7 +222,7 @@ pboolean tc_cpe_send_level_data_chunk(PSocket* session, puint16 chunk_length, co
 // - y size: the size of the y chunk to send the packet to
 // - z size: the size of the z chunk to send the packet to
 // - return: TRUE if the packet was sent, FALSE otherwise
-pboolean tc_cpe_send_level_finalize(PSocket* session, pint16 x_size, pint16 y_size, pint16 z_size);
+pboolean tc_send_level_finalize(PSocket* session, pint16 x_size, pint16 y_size, pint16 z_size);
 
 // Gets the index of a supported extension by name
 // - extension_name: the name of the extension to get the index of
