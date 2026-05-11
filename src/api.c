@@ -35,6 +35,8 @@ static void handle_failure(tc_send_map_data_t* send_map_data) {
         tc_map_cache_unref(&send_map_data->session->server->map_cache, send_map_data->map);
     }
     p_free(send_map_data);
+    
+    p_atomic_int_set(&send_map_data->session->is_sending_map, 0); //reset the flag
 
     // unhandled failure, kick the session
     if (!send_map_data->session->current_joinable || !send_map_data->session->current_joinable->handle_map_send_failure) {
@@ -56,6 +58,7 @@ static void tc_send_map_task1(void* arg, tc_thread_pool_task_priority_t priority
     if (!send_map_data->map) {
         tc_map_t* map = tc_map_cache_open(&send_map_data->session->server->map_cache, send_map_data->file_name);
         if (!map) {
+            TC_LOG_SESSION(log_error, send_map_data->session, "Failed to send map %s: Could not load map.", send_map_data->file_name);
             handle_failure(send_map_data);
             return;
         }
@@ -77,6 +80,7 @@ static void tc_send_map_task1(void* arg, tc_thread_pool_task_priority_t priority
         );
     }
     if (!result) {
+        TC_LOG_SESSION(log_error, send_map_data->session, "Failed to send map (name %s): Could not compress block array.", send_map_data->map->name);
         handle_failure(send_map_data);
         return;
     }
@@ -96,6 +100,7 @@ static void tc_send_map_task1(void* arg, tc_thread_pool_task_priority_t priority
             );
         }
         if (!result) {
+            TC_LOG_SESSION(log_error, send_map_data->session, "Failed to send map (name %s): Could not compress block array2.", send_map_data->map->name);
             handle_failure(send_map_data);
             return;
         }
@@ -108,6 +113,7 @@ static void tc_send_map_task1(void* arg, tc_thread_pool_task_priority_t priority
         TC_THREAD_POOL_TASK_PRIORITY_MEDIUM
     );
     if (!result) {
+        TC_LOG_SESSION(log_error, send_map_data->session, "Failed to send map (name %s): Could not schedule task 2.", send_map_data->map->name);
         handle_failure(send_map_data);
         return;
     }

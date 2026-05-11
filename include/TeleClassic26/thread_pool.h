@@ -11,8 +11,8 @@
 typedef enum tc_thread_pool_task_priority {
     TC_THREAD_POOL_TASK_PRIORITY_HIGH = 0,
     TC_THREAD_POOL_TASK_PRIORITY_MEDIUM = 1,
-    TC_THREAD_POOL_TASK_PRIORITY_LOW = 2,
-    TC_THREAD_POOL_TASK_PRIORITY_BLOCKING = 3
+    TC_THREAD_POOL_TASK_PRIORITY_BLOCKING = 2,
+    TC_THREAD_POOL_TASK_PRIORITY_LOW = 3
 } tc_thread_pool_task_priority_t;
 
 typedef void (*tc_thread_pool_task_t)(void *arg, tc_thread_pool_task_priority_t priority);
@@ -34,8 +34,8 @@ typedef struct tc_thread_pool_task_buf {
 typedef struct tc_thread_pool {
     tc_thread_pool_context_t high_prio_buffer[TC_THREADS_STD_BUFFER_SIZE / 2];
     tc_thread_pool_context_t medium_prio_buffer[TC_THREADS_STD_BUFFER_SIZE];
-    tc_thread_pool_context_t low_prio_buffer[TC_THREADS_STD_BUFFER_SIZE * 2];
     tc_thread_pool_context_t blocking_prio_buffer[TC_THREADS_STD_BUFFER_SIZE];
+    tc_thread_pool_context_t low_prio_buffer[TC_THREADS_STD_BUFFER_SIZE * 2];
 
     tc_thread_pool_task_buf_t task_prio_buffer[TC_THREAD_POOL_MAX_PRIORITY];
 
@@ -67,7 +67,7 @@ typedef struct tc_thread_pool {
 // - reserved_threads: number of threads to reserve for other purposes outside of the thread pool
 // - max_blocking_threads: max number of worker threads that may concurrently run
 //   TC_THREAD_POOL_TASK_PRIORITY_BLOCKING tasks (clamped to num_threads)
-// NOTE: round_robin_pattern must be a cstring consisting of the characters 'A'=high, 'B'=medium, 'C'=low, and 'D'=blocking
+// NOTE: round_robin_pattern must be a cstring consisting of the characters 'A'=high, 'B'=medium, 'C'=blocking, and 'D'=low
 pboolean tc_thread_pool_init(
     tc_thread_pool_t *pool,
     const pchar* round_robin_pattern,

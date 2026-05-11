@@ -189,8 +189,8 @@ pboolean tc_thread_pool_init(
 
     init_task_buffer(&pool->task_prio_buffer[TC_THREAD_POOL_TASK_PRIORITY_HIGH], pool->high_prio_buffer, TC_THREADS_STD_BUFFER_SIZE / 2);
     init_task_buffer(&pool->task_prio_buffer[TC_THREAD_POOL_TASK_PRIORITY_MEDIUM], pool->medium_prio_buffer, TC_THREADS_STD_BUFFER_SIZE);
-    init_task_buffer(&pool->task_prio_buffer[TC_THREAD_POOL_TASK_PRIORITY_LOW], pool->low_prio_buffer, 2 * TC_THREADS_STD_BUFFER_SIZE);
     init_task_buffer(&pool->task_prio_buffer[TC_THREAD_POOL_TASK_PRIORITY_BLOCKING], pool->blocking_prio_buffer, TC_THREADS_STD_BUFFER_SIZE);
+    init_task_buffer(&pool->task_prio_buffer[TC_THREAD_POOL_TASK_PRIORITY_LOW], pool->low_prio_buffer, 2 * TC_THREADS_STD_BUFFER_SIZE);
 
     log_info("Creating %d worker threads...", num_threads);
     for (pint i = 0; i < num_threads; i++) {
