@@ -11,6 +11,7 @@ const tc_cpe_extension_t tc_supported_extensions[TC_CPE_EXTENSION_MAX_SUPPORTED]
     [TC_CPE_EXTENDED_BLOCKS_EXTENSION_INDEX] = { .name = "ExtendedBlocks", .version = 1 },
     [TC_CPE_EXTENDED_TEXTURES_EXTENSION_INDEX] = { .name = "ExtendedTextures", .version = 1 },
     [TC_CPE_MESSAGE_TYPES_EXTENSION_INDEX] = { .name = "MessageTypes", .version = 1 },
+    [TC_CPE_FASTMAP_EXTENSION_INDEX] = { .name = "FastMap", .version = 1 },
 };
 
 pboolean tc_protocol_send_byte(PSocket* socket, const pchar opcode) {
@@ -56,8 +57,8 @@ pboolean tc_protocol_send_short(PSocket* socket, const puint16 data) {
     return TRUE;
 }
 
-pboolean tc_protocol_send_int(PSocket* socket, const pint32 data) {
-    for (pint i = 0; i < sizeof(int32_t); i++) {
+pboolean tc_protocol_send_int(PSocket* socket, const puint32 data) {
+    for (pint i = 0; i < sizeof(uint32_t); i++) {
         pchar byte = (data >> (i * 8)) & 0xFF;
         if (!tc_protocol_send_byte(socket, byte)) {
             return FALSE;
@@ -212,7 +213,17 @@ pboolean tc_cpe_send_level_initialize(PSocket* session) {
     return TRUE;
 }
 
-pboolean tc_cpe_send_level_data_chunk(PSocket* session, pint16 chunk_length, const pchar chunk_data[1024], pchar percent_complete) {
+pboolean tc_cpe_send_level_initialize2(PSocket* session, puint32 block_count) {
+    if (!tc_protocol_send_byte(session, 0x02)) {
+        return FALSE;
+    }
+    if (!tc_protocol_send_int(session, block_count)) {
+        return FALSE;
+    }
+    return TRUE;
+}
+
+pboolean tc_cpe_send_level_data_chunk(PSocket* session, puint16 chunk_length, const pchar chunk_data[1024], pchar percent_complete) {
     if (!tc_protocol_send_byte(session, 0x03)) {
         return FALSE;
     }
@@ -228,7 +239,7 @@ pboolean tc_cpe_send_level_data_chunk(PSocket* session, pint16 chunk_length, con
     return TRUE;
 }
 
-pboolean tc_cpe_send_level_finalize(PSocket* session, pint16 x_size, pint16 y_size, pint16 z_size) {
+pboolean tc_cpe_send_level_finalize(PSocket* session, puint16 x_size, puint16 y_size, puint16 z_size) {
     if (!tc_protocol_send_byte(session, 0x04)) {
         return FALSE;
     }
