@@ -18,7 +18,14 @@
             : "N/A"                                                          \
     )
 
+struct send_buffer {
+    pchar* data;
+    psize size;
+} send_buffer_t;
+
 // Compares two strings
 pint tc_string_compare(pconstpointer str1, pconstpointer str2, ppointer data);
+
+// Gzips a byte array
 
 #endif /* TELECLASSIC26_UTILS_H */

@@ -9,7 +9,9 @@ set(PLIBSYS_TESTS OFF CACHE BOOL "" FORCE)
 set(PLIBSYS_BUILD_DOC OFF CACHE BOOL "" FORCE)
 add_subdirectory(plibsys-master)
 
-# libcurl (vendored)
+# libcurl (vendored). CURL_ZLIB=OFF keeps a single vendored zlib (below) for cNBT
+# and TeleClassic26. With CURL_ZLIB AUTO/ON, FindZLIB usually picks the macOS SDK
+# libz while the rest of the project uses ZLIB::ZLIB from the zlib/ subtree.
 set(BUILD_CURL_EXE OFF CACHE BOOL "" FORCE)
 set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
 set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
@@ -17,6 +19,7 @@ set(BUILD_LIBCURL_DOCS OFF CACHE BOOL "" FORCE)
 set(BUILD_MISC_DOCS OFF CACHE BOOL "" FORCE)
 set(CURL_USE_LIBPSL OFF CACHE BOOL "" FORCE)
 set(USE_NGHTTP2 OFF CACHE BOOL "" FORCE)
+set(CURL_ZLIB OFF CACHE STRING "" FORCE)
 set(CURL_ZSTD OFF CACHE BOOL "" FORCE)
 set(CURL_BROTLI OFF CACHE BOOL "" FORCE)
 add_subdirectory(curl-master)

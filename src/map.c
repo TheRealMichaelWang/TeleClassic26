@@ -797,17 +797,22 @@ tc_map_t* tc_map_cache_open(tc_map_cache_t* cache, const pchar* name) {
         p_rwlock_writer_unlock(cache->lock);
         return &entry->map;
     } else {
-        p_rwlock_writer_lock(list_entry->lock);
-        list_entry->open_count++;
-        list_entry->is_referenced = TRUE; //mark reference bit
-        p_rwlock_writer_unlock(list_entry->lock);
+        tc_map_cache_ref(cache, &list_entry->map);
 
         p_rwlock_reader_unlock(cache->lock);
         return &list_entry->map;
     }
 }
 
-void tc_map_cache_close(tc_map_cache_t* cache, tc_map_t* map) {
+void tc_map_cache_ref(tc_map_cache_t* cache, tc_map_t* map) {
+    tc_map_cache_entry_t* list_entry = (tc_map_cache_entry_t*)map;
+    p_rwlock_writer_lock(list_entry->lock);
+    list_entry->open_count++;
+    list_entry->is_referenced = TRUE;
+    p_rwlock_writer_unlock(list_entry->lock);
+}
+
+void tc_map_cache_unref(tc_map_cache_t* cache, tc_map_t* map) {
     // do not do any eviction logic here, it should be handled by the cache itself
     tc_map_cache_entry_t* list_entry = (tc_map_cache_entry_t*)map;
 

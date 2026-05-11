@@ -2,10 +2,10 @@
 #define TELECLASSIC26_LEVEL_H
 
 #include <plibsys.h>
-#include <TeleClassic26/gameplay/map.h>
 #include <TeleClassic26/networking/protocol.h>
 #include <TeleClassic26/thread_pool.h>
 #include <TeleClassic26/networking/server.h>
+#include <TeleClassic26/gameplay/map.h>
 
 // message types for the server to send to the client
 // see MessageTypes CPE extension on wiki.vg for details
@@ -35,11 +35,10 @@ pboolean tc_api_send_message(tc_session_t* session, tc_message_type_t message_ty
 // - on_failure: the task to schedule on failure to transmit the map
 // - return: TRUE if the world was scheduled, FALSE otherwise
 pboolean tc_api_schedule_send_map(
-    tc_session_t* session, 
+    tc_session_t* session,
     const pchar* file_name, 
-    tc_thread_pool_task_priority_t priority, 
-    tc_thread_pool_task_t on_success, 
-    tc_thread_pool_task_t on_failure
+    tc_map_t* pre_loaded_map,
+    tc_thread_pool_task_priority_t priority
 );
 
 #endif /* TELECLASSIC26_LEVEL_H */

@@ -329,6 +329,7 @@ static void handle_new_session(tc_server_t* server, PSocket* client_socket) {
     session->supports_cpe = FALSE;
     session->authenticated_service = NULL;
     session->current_joinable = NULL;
+    session->is_sending_map = FALSE;
     session->remaining_cpe_ext_packets = -1;
     session->custom_block_support_level = 0;
     memset(session->ext_cpe_versions, 0, sizeof(session->ext_cpe_versions));

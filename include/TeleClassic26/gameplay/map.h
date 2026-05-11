@@ -190,6 +190,7 @@ pboolean tc_map_cache_init(tc_map_cache_t* cache, psize memory_usage_threshold);
 void tc_map_cache_finalize(tc_map_cache_t* cache);
 
 tc_map_t* tc_map_cache_open(tc_map_cache_t* cache, const pchar* name);
-void tc_map_cache_close(tc_map_cache_t* cache, tc_map_t* map);
+void tc_map_cache_ref(tc_map_cache_t* cache, tc_map_t* map);
+void tc_map_cache_unref(tc_map_cache_t* cache, tc_map_t* map);
 
 #endif /* TELECLASSIC26_GAMEPLAY_MAP_H */

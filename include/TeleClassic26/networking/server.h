@@ -33,6 +33,8 @@ typedef struct tc_session {
 
     pboolean supports_cpe;
 
+    volatile pint is_sending_map;
+
     pint id;
     pshort remaining_cpe_ext_packets;
     pchar custom_block_support_level;

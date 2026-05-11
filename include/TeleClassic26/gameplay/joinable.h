@@ -1,7 +1,9 @@
 #ifndef TELECLASSIC26_GAMEPLAY_WORLD_H
 #define TELECLASSIC26_GAMEPLAY_WORLD_H
 
+#include "TeleClassic26/gameplay/map.h"
 #include <plibsys.h>
+#include <TeleClassic26/thread_pool.h>
 
 // forward declaration of tc_session_t; to avoid circular dependencies
 typedef struct tc_session tc_session_t;
@@ -19,28 +21,37 @@ typedef struct tc_joinable_interface {
     // - call this to leave the world (must be called before the session is destroyed)
     void (*leave)(void* this_context, tc_session_t* session);
 
-    // gets the number of players in the world
-    // - return: the number of players in the world
-    pint (*num_players)(void* this_context, tc_session_t* session);
-
+    /*
+        Handle specific player request packets
+    */
     // handles a set block request
     // - see classic protocol docs on wiki.vg for details
     // - return: TRUE if the set block request was handled, FALSE otherwise
-    pboolean (*handle_set_block)(void* this_context, tc_session_t* session, pint16 x, pint16 y, pint16 z, pchar mode, pint16 block);
+    pboolean (*handle_set_block)(void* this_context, tc_session_t* session, pint16 x, pint16 y, pint16 z, pchar mode, pint16 block, tc_thread_pool_task_priority_t current_priority);
 
     // handles a position and orientation update
     // - see classic protocol docs on wiki.vg for details
     // - return: TRUE if the position and orientation update was handled, FALSE otherwise
-    pboolean (*handle_position_update)(void* this_context, tc_session_t* session, pint16 x, pint16 y, pint16 z, pchar heading, pchar pitch);
+    pboolean (*handle_position_update)(void* this_context, tc_session_t* session, pint16 x, pint16 y, pint16 z, pchar heading, pchar pitch, tc_thread_pool_task_priority_t current_priority);
 
     // handles a message from the player
     // - message: the message to handle
     // - message_length: the length of the message (not including the null terminator)
     // - return: TRUE if the message was handled, FALSE otherwise
-    pboolean (*handle_message)(void* this_context, tc_session_t* session, const pchar* message, pint message_length);
+    pboolean (*handle_message)(void* this_context, tc_session_t* session, const pchar* message, pint message_length, tc_thread_pool_task_priority_t current_priority);
+
+    /*
+        Handle general events and errors
+    */
 
     // handles a sudden stop of the server
     void (*handle_server_stop)(void* this_context);
+
+    // handles a map send failure
+    void (*handle_map_send_failure)(void* this_context, tc_session_t* session, tc_thread_pool_task_priority_t current_priority);
+
+    // handles a map send success
+    void (*handle_map_send_success)(void* this_context, tc_session_t* session, tc_map_t* map, tc_thread_pool_task_priority_t current_priority);
 } tc_joinable_interface_t;
 
 typedef struct tc_join_router {
