@@ -253,7 +253,7 @@ void tc_server_client_listen_task(void *arg, tc_thread_pool_task_priority_t prio
         PError *error = NULL;
         psize read_size = p_socket_receive(
             session->client_socket, 
-            &session->pending_packet_buffer[session->pending_packet_buffer_size], 
+            (pchar*)&session->pending_packet_buffer[session->pending_packet_buffer_size], 
             packet_buffer_size - session->pending_packet_buffer_size, 
             &error
         );

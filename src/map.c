@@ -244,20 +244,20 @@ pboolean tc_map_load(tc_map_t *map, const pchar *path)
 
     n = nbt_expect(root, "ClassicWorld.BlockArray", TAG_BYTE_ARRAY);
     if (!n) { goto fail; }
-    int32_t len = n->payload.tag_byte_array.length;
-    if (len != map->x_size * map->y_size * map->z_size) { goto fail; } //dimensions check
-    map->block_array = (pchar *)p_malloc((psize)len);
+    map->block_array_count = n->payload.tag_byte_array.length;
+    if (map->block_array_count != map->x_size * map->y_size * map->z_size) { goto fail; } //dimensions check
+    map->block_array = (pchar *)p_malloc((psize)map->block_array_count);
     if (!map->block_array) { goto fail; }
-    memcpy(map->block_array, n->payload.tag_byte_array.data, (size_t)len);
+    memcpy(map->block_array, n->payload.tag_byte_array.data, (size_t)map->block_array_count);
 
     //block array 2 is optional
     n = nbt_find_by_path(root, "ClassicWorld.BlockArray2");
     if (n) {
-        int32_t len2 = n->payload.tag_byte_array.length;
-        if (len2 != len / 4) { goto fail; } //2 bits per block in block_array2
-        map->block_array2 = (pchar *)p_malloc((psize)len2);
+        map->block_array2_count = n->payload.tag_byte_array.length;
+        if (map->block_array2_count * 4 < map->block_array_count) { goto fail; } //2 bits per block in block_array2
+        map->block_array2 = (pchar *)p_malloc((psize)map->block_array2_count);
         if (!map->block_array2) { goto fail; }
-        memcpy(map->block_array2, n->payload.tag_byte_array.data, (size_t)len2);
+        memcpy(map->block_array2, n->payload.tag_byte_array.data, (size_t)map->block_array2_count);
     }
 
     /* CPE: CustomBlocks */
@@ -509,11 +509,10 @@ pboolean tc_map_save(tc_map_t *map, const pchar *path)
     if (!nbt_put(spawn, nbt_make_byte("H", map->spawn_heading))) { goto fail; }
     if (!nbt_put(spawn, nbt_make_byte("P", map->spawn_pitch))) { goto fail; }
 
-    int32_t block_count = (int32_t)map->x_size * map->y_size * map->z_size;
-    if (!nbt_put(root, nbt_make_byte_array("BlockArray", map->block_array, block_count))) { goto fail; }
+    if (!nbt_put(root, nbt_make_byte_array("BlockArray", map->block_array, map->block_array_count))) { goto fail; }
 
     if (map->block_array2) {
-        if (!nbt_put(root, nbt_make_byte_array("BlockArray2", map->block_array2, block_count / 4))) { goto fail; }
+        if (!nbt_put(root, nbt_make_byte_array("BlockArray2", map->block_array2, map->block_array2_count))) { goto fail; }
     }
 
     nbt_node *metadata = nbt_make_compound("Metadata");

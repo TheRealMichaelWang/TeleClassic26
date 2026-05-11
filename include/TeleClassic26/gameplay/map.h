@@ -88,6 +88,8 @@ typedef struct tc_map {
     // we support up to 10 bits per block, up to 1024 total blocks
     pchar* block_array; //store the 0th to 7th bit for block data (one byte per block)
     pchar* block_array2; //store the 8th and 9th bit for extended block data (two bits per block)
+    psize block_array_count;
+    psize block_array2_count;
 
     tc_map_custom_blocks_extension_t* custom_blocks_extension;
     tc_map_env_colors_extension_t* env_colors_extension;
@@ -95,13 +97,13 @@ typedef struct tc_map {
     tc_map_env_weather_extension_t* env_weather_extension;
     tc_map_block_definition_extension_t* block_definition_extensions;
 
-    pshort x_size;
-    pshort y_size;
-    pshort z_size;
+    pint16 x_size;
+    pint16 y_size;
+    pint16 z_size;
 
-    pshort spawn_x;
-    pshort spawn_y;
-    pshort spawn_z;
+    pint16 spawn_x;
+    pint16 spawn_y;
+    pint16 spawn_z;
 
     pchar spawn_heading;
     pchar spawn_pitch;

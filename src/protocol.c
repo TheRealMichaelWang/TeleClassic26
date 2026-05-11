@@ -44,7 +44,7 @@ pboolean tc_protocol_send_datachunk(PSocket* socket, const pchar data[], psize l
     return is_waiting;
 }
 
-pboolean tc_protocol_send_short(PSocket* socket, const puint16 data) {
+pboolean tc_protocol_send_short(PSocket* socket, const pint16 data) {
     pchar high = data >> 8;
     pchar low = data & 0xFF;
 
@@ -57,7 +57,7 @@ pboolean tc_protocol_send_short(PSocket* socket, const puint16 data) {
     return TRUE;
 }
 
-pboolean tc_protocol_send_int(PSocket* socket, const puint32 data) {
+pboolean tc_protocol_send_int(PSocket* socket, const pint32 data) {
     for (pint i = 0; i < sizeof(uint32_t); i++) {
         pchar byte = (data >> (i * 8)) & 0xFF;
         if (!tc_protocol_send_byte(socket, byte)) {
@@ -213,7 +213,7 @@ pboolean tc_cpe_send_level_initialize(PSocket* session) {
     return TRUE;
 }
 
-pboolean tc_cpe_send_level_initialize2(PSocket* session, puint32 block_count) {
+pboolean tc_cpe_send_level_initialize2(PSocket* session, pint32 block_count) {
     if (!tc_protocol_send_byte(session, 0x02)) {
         return FALSE;
     }
@@ -239,7 +239,7 @@ pboolean tc_cpe_send_level_data_chunk(PSocket* session, puint16 chunk_length, co
     return TRUE;
 }
 
-pboolean tc_cpe_send_level_finalize(PSocket* session, puint16 x_size, puint16 y_size, puint16 z_size) {
+pboolean tc_cpe_send_level_finalize(PSocket* session, pint16 x_size, pint16 y_size, pint16 z_size) {
     if (!tc_protocol_send_byte(session, 0x04)) {
         return FALSE;
     }

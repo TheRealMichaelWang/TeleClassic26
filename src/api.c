@@ -19,10 +19,8 @@ typedef struct tc_send_map_data {
     tc_thread_pool_task_priority_t priority;
 
     tc_map_t* map;
-    pchar* gziped_block_array;
-    pchar* gziped_block_array2;
-    psize gziped_block_array_size;
-    psize gziped_block_array2_size;
+    send_buffer_t block_array_buffer;
+    send_buffer_t block_array2_buffer;
 } tc_send_map_data_t;
 
 static void handle_failure(tc_send_map_data_t* send_map_data) {
@@ -44,6 +42,12 @@ static void handle_failure(tc_send_map_data_t* send_map_data) {
     }
 }
 
+// Task 2: Send the main block array level init packet and set up environment packets
+static void tc_send_map_task2(void* arg, tc_thread_pool_task_priority_t priority) {
+    tc_send_map_data_t* send_map_data = (tc_send_map_data_t*)arg;
+    
+}
+
 // Task 1: Load the map from the file system and gzip the block array and block array2
 static void tc_send_map_task1(void* arg, tc_thread_pool_task_priority_t priority) {
     tc_send_map_data_t* send_map_data = (tc_send_map_data_t*)arg;
@@ -58,7 +62,57 @@ static void tc_send_map_task1(void* arg, tc_thread_pool_task_priority_t priority
         send_map_data->map = map;
     }
     
-    
+    pboolean result;
+    if (tc_session_get_extension_version(send_map_data->session, TC_CPE_FASTMAP_EXTENSION_INDEX) >= 0) {
+        result = tc_deflate_byte_array(
+            (puint8*)send_map_data->map->block_array,
+            send_map_data->map->block_array_count,
+            &send_map_data->block_array_buffer
+        );
+    } else {
+        result = tc_gzip_byte_array(
+            (puint8*)send_map_data->map->block_array,
+            send_map_data->map->block_array_count,
+            &send_map_data->block_array_buffer
+        );
+    }
+    if (!result) {
+        handle_failure(send_map_data);
+        return;
+    }
+
+    if (send_map_data->map->block_array2) {
+        if (tc_session_get_extension_version(send_map_data->session, TC_CPE_FASTMAP_EXTENSION_INDEX) >= 0) {
+            result = tc_deflate_byte_array(
+                (puint8*)send_map_data->map->block_array2,
+                send_map_data->map->block_array2_count,
+                &send_map_data->block_array2_buffer
+            );
+        } else {
+            result = tc_gzip_byte_array(
+                (puint8*)send_map_data->map->block_array2,
+                send_map_data->map->block_array2_count,
+                &send_map_data->block_array2_buffer
+            );
+        }
+        if (!result) {
+            handle_failure(send_map_data);
+            return;
+        }
+    }
+
+    result = tc_thread_schedule_new(
+        &send_map_data->session->server->thread_pool,
+        tc_send_map_task2,
+        send_map_data,
+        TC_THREAD_POOL_TASK_PRIORITY_MEDIUM
+    );
+    if (!result) {
+        handle_failure(send_map_data);
+        return;
+    }
+
+    return;
 }
 
 pboolean tc_api_schedule_send_map(

@@ -38,13 +38,13 @@ pboolean tc_protocol_send_byte(PSocket* socket, const pchar opcode);
 // - socket: the socket to send the short to
 // - short: the short to send
 // - return: TRUE if the short was sent, FALSE otherwise
-pboolean tc_protocol_send_short(PSocket* socket, const puint16 data);
+pboolean tc_protocol_send_short(PSocket* socket, const pint16 data);
 
 // sends an integer to the socket
 // - socket: the socket to send the integer to
 // - integer: the integer to send
 // - return: TRUE if the integer was sent, FALSE otherwise
-pboolean tc_protocol_send_int(PSocket* socket, const puint32 data);
+pboolean tc_protocol_send_int(PSocket* socket, const pint32 data);
 
 // sends a string to the socket
 // - socket: the socket to send the string to
@@ -124,7 +124,7 @@ pboolean tc_cpe_send_level_initialize(PSocket* session);
 // - session: the session to send the packet to
 // - block_count: the number of blocks to send the packet to
 // - return: TRUE if the packet was sent, FALSE otherwise
-pboolean tc_cpe_send_level_initialize2(PSocket* session, puint32 block_count);
+pboolean tc_cpe_send_level_initialize2(PSocket* session, pint32 block_count);
 
 // sends a level data chunk packet
 // - session: the session to send the packet to
@@ -138,7 +138,7 @@ pboolean tc_cpe_send_level_data_chunk(PSocket* session, puint16 chunk_length, co
 // - y size: the size of the y chunk to send the packet to
 // - z size: the size of the z chunk to send the packet to
 // - return: TRUE if the packet was sent, FALSE otherwise
-pboolean tc_cpe_send_level_finalize(PSocket* session, puint16 x_size, puint16 y_size, puint16 z_size);
+pboolean tc_cpe_send_level_finalize(PSocket* session, pint16 x_size, pint16 y_size, pint16 z_size);
 
 // Gets the index of a supported extension by name
 // - extension_name: the name of the extension to get the index of
