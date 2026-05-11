@@ -10,7 +10,7 @@
 #define TC_PROTOCOL_USER_TYPE_OPERATOR 0x64
 #define TC_PROTOCOL_USER_TYPE_STANDARD 0x00
 
-#define TC_CPE_EXTENSION_MAX_SUPPORTED 6
+#define TC_CPE_EXTENSION_MAX_SUPPORTED 10
 
 #define TC_CPE_CUSTOM_BLOCKS_EXTENSION_INDEX 0
 #define TC_CPE_BLOCK_DEFINITIONS_EXTENSION_INDEX 1
@@ -18,6 +18,10 @@
 #define TC_CPE_EXTENDED_TEXTURES_EXTENSION_INDEX 3
 #define TC_CPE_MESSAGE_TYPES_EXTENSION_INDEX 4
 #define TC_CPE_FASTMAP_EXTENSION_INDEX 5
+#define TC_CPE_ENV_MAP_APPEARANCE_EXTENSION_INDEX 6
+#define TC_CPE_ENV_MAP_WEATHER_TYPE_EXTENSION_INDEX 7
+#define TC_CPE_ENV_MAP_COLORS_EXTENSION_INDEX 8
+#define TC_CPE_ENV_MAP_ASPECT_EXTENSION_INDEX 9
 
 #define TC_CPE_CUSTOM_BLOCKS_MAX_SUPPORT_LEVEL 1
 
@@ -108,12 +112,92 @@ pboolean tc_cpe_send_extentry(PSocket* session, const pchar extension_name[TC_PR
 // - return: TRUE if the packet was sent, FALSE otherwise
 pboolean tc_cpe_send_custom_block_support_level(PSocket* session, pchar support_level);
 
+// sends a set map env url packet
+// - session: the session to send the packet to
+// - texture_url: the url of the texture to send the packet to
+// - return: TRUE if the packet was sent, FALSE otherwise
+pboolean tc_cpe_send_set_map_env_url(PSocket* session, const pchar texture_url[]);
+
+
+
+//map property values
+enum {
+    TC_CPE_MAP_ENV_PROPERTY_SIDE_BLOCK = 0,
+    TC_CPE_MAP_ENV_PROPERTY_EDGE_BLOCK = 1,
+    TC_CPE_MAP_ENV_PROPERTY_EDGE_HEIGHT = 2,
+    TC_CPE_MAP_ENV_PROPERTY_CLOUDS_HEIGHT = 3,
+    TC_CPE_MAP_ENV_PROPERTY_MAX_VIEW_DISTANCE = 4,
+    TC_CPE_MAP_ENV_PROPERTY_CLOUDS_SPEED = 5,
+    TC_CPE_MAP_ENV_PROPERTY_WEATHER_SPEED = 6,
+    TC_CPE_MAP_ENV_PROPERTY_WEATHER_FADE = 7,
+    TC_CPE_MAP_ENV_PROPERTY_USE_EXPONENTIAL_FOG = 8,
+    TC_CPE_MAP_ENV_PROPERTY_SIDE_OFFSET = 9,
+};
+// sends a set map env property packet
+// - session: the session to send the packet to
+// - property: the property to send the packet to
+// - value: the value of the property to send the packet to
+// - return: TRUE if the packet was sent, FALSE otherwise
+pboolean tc_cpe_send_set_map_env_property(PSocket* session, pchar property, pint32 value);
+
+// sends an env map appearance v1 packet
+// - session: the session to send the packet to
+// - texture_url: the url of the texture to send the packet to
+// - side_block: the side block to send the packet to
+// - edge_block: the edge block to send the packet to
+// - side_level: the side level to send the packet to
+// - return: TRUE if the packet was sent, FALSE otherwise
+pboolean tc_cpe_send_env_map_appearance1(PSocket* session, const pchar texture_url[], pchar side_block, pchar edge_block, pint16 side_level);
+
+// sends an env map appearance v2 packet
+// - session: the session to send the packet to
+// - texture_url: the url of the texture to send the packet to
+// - side_block: the side block to send the packet to
+// - edge_block: the edge block to send the packet to
+// - side_level: the side level to send the packet to
+// - cloud_level: the cloud level to send the packet to
+// - maximum_view_distance: the maximum view distance to send the packet to
+// - return: TRUE if the packet was sent, FALSE otherwise
+pboolean tc_cpe_send_env_map_appearance2(PSocket* session, const pchar texture_url[], pchar side_block, pchar edge_block, pint16 side_level, pint16 cloud_level, pint16 maximum_view_distance);
+
+//weather type values
+enum {
+    TC_CPE_WEATHER_TYPE_SUNNY = 0,
+    TC_CPE_WEATHER_TYPE_RAINING = 1,
+    TC_CPE_WEATHER_TYPE_SNOWING = 2
+};
+
+// sends an env set weather type packet
+// - session: the session to send the packet to
+// - weather_type: the weather type to send the packet to
+// - return: TRUE if the packet was sent, FALSE otherwise
+pboolean tc_cpe_send_env_set_weather_type(PSocket* session, pchar weather_type);
+
+//color field values
+enum {
+    TC_CPE_ENV_COLOR_SKY = 0,
+    TC_CPE_ENV_COLOR_CLOUD = 1,
+    TC_CPE_ENV_COLOR_FOG = 2,
+    TC_CPE_ENV_COLOR_AMBIENT = 3,
+    TC_CPE_ENV_COLOR_SUNLIGHT = 4,
+    TC_CPE_ENV_COLOR_SKYBOX = 5
+};
+
+// sends a set env colors packet
+// - session: the session to send the packet to
+// - color_field: the color field to send the packet to
+// - red: the red value of the color to send the packet to
+// - green: the green value of the color to send the packet to
+// - blue: the blue value of the color to send the packet to
+// - return: TRUE if the packet was sent, FALSE otherwise
+pboolean tc_cpe_send_set_env_color(PSocket* session, pchar color_field, pint16 red, pint16 green, pint16 blue);
+
 // sends a message to the session
 // - session: the session to send the message to
 // - player_id: the id of the player (always 0 unless CPE MessageTypes extension is supported)
 // - message: the message to send (must be less or equal to 64 characters)
 // - return: TRUE if the message was sent, FALSE otherwise
-pboolean tc_send_message(PSocket* session, pchar player_id, const pchar message[]);
+pboolean tc_send_message(PSocket* session, pint8 player_id, const pchar message[]);
 
 // sends a level initialize packet
 // - session: the session to send the packet to

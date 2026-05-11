@@ -35,7 +35,7 @@ static void handle_failure(tc_send_map_data_t* send_map_data) {
         tc_map_cache_unref(&send_map_data->session->server->map_cache, send_map_data->map);
     }
     p_free(send_map_data);
-    
+
     p_atomic_int_set(&send_map_data->session->is_sending_map, 0); //reset the flag
 
     // unhandled failure, kick the session
@@ -47,7 +47,25 @@ static void handle_failure(tc_send_map_data_t* send_map_data) {
 // Task 2: Send the main block array level init packet and set up environment packets
 static void tc_send_map_task2(void* arg, tc_thread_pool_task_priority_t priority) {
     tc_send_map_data_t* send_map_data = (tc_send_map_data_t*)arg;
-    
+    TC_ASSERT(priority == send_map_data->priority, "Map sending must be run with the requested priority.");
+
+    if (tc_session_get_extension_version(send_map_data->session, TC_CPE_FASTMAP_EXTENSION_INDEX) >= 0) {
+        if (!tc_cpe_send_level_initialize2(send_map_data->session->client_socket, send_map_data->map->block_array_count)) {
+            TC_LOG_SESSION(log_error, send_map_data->session, "Failed to send map (name %s): Could not send level initialize packet.", send_map_data->map->name);
+            handle_failure(send_map_data);
+            return;
+        }
+    } else {
+        if (!tc_cpe_send_level_initialize(send_map_data->session->client_socket)) {
+            TC_LOG_SESSION(log_error, send_map_data->session, "Failed to send map (name %s): Could not send level initialize packet.", send_map_data->map->name);
+            handle_failure(send_map_data);
+            return;
+        }
+    }
+
+    if (send_map_data->map->env_appearance_extension) {
+        
+    }
 }
 
 // Task 1: Load the map from the file system and gzip the block array and block array2
@@ -110,7 +128,7 @@ static void tc_send_map_task1(void* arg, tc_thread_pool_task_priority_t priority
         &send_map_data->session->server->thread_pool,
         tc_send_map_task2,
         send_map_data,
-        TC_THREAD_POOL_TASK_PRIORITY_MEDIUM
+        send_map_data->priority
     );
     if (!result) {
         TC_LOG_SESSION(log_error, send_map_data->session, "Failed to send map (name %s): Could not schedule task 2.", send_map_data->map->name);

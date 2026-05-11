@@ -306,6 +306,57 @@ pboolean tc_map_load(tc_map_t *map, const pchar *path)
         if (!load_color(ext, "Sunlight", &ec->sunlight)) { goto fail; }
     }
 
+    /* CPE: EnvAspect */
+    ext = nbt_find_by_path(root, "ClassicWorld.Metadata.CPE.EnvAspect");
+    if (ext) {
+        if (ext->type != TAG_COMPOUND) { goto fail; }
+        tc_map_env_aspect_extension_t *ea = (tc_map_env_aspect_extension_t *)
+            p_malloc(sizeof(tc_map_env_aspect_extension_t));
+        if (!ea) { goto fail; }
+        memset(ea, 0, sizeof(*ea));
+        map->env_aspect_extension = ea;
+
+        n = nbt_expect(ext, "ExtensionVersion", TAG_INT);
+        if (!n) { goto fail; }
+        ea->extension_version = n->payload.tag_int;
+
+        n = nbt_expect(ext, "SideBlock", TAG_BYTE);
+        if (!n) { goto fail; }
+        ea->side_block = n->payload.tag_byte;
+
+        n = nbt_expect(ext, "EdgeBlock", TAG_BYTE);
+        if (!n) { goto fail; }
+        ea->edge_block = n->payload.tag_byte;
+
+        n = nbt_expect(ext, "CloudsHeight", TAG_INT);
+        if (!n) { goto fail; }
+        ea->clouds_height = n->payload.tag_int;
+
+        n = nbt_expect(ext, "CloudsSpeed", TAG_FLOAT);
+        if (!n) { goto fail; }
+        ea->clouds_speed = n->payload.tag_float;
+
+        n = nbt_expect(ext, "EdgeHeight", TAG_INT);
+        if (!n) { goto fail; }
+        ea->edge_height = n->payload.tag_int;
+
+        n = nbt_expect(ext, "UseExponentialFog", TAG_BYTE);
+        if (!n) { goto fail; }
+        ea->use_exponential_fog = n->payload.tag_byte;
+
+        n = nbt_expect(ext, "SideOffset", TAG_INT);
+        if (!n) { goto fail; }
+        ea->side_offset = n->payload.tag_int;
+
+        n = nbt_expect(ext, "WeatherFade", TAG_FLOAT);
+        if (!n) { goto fail; }
+        ea->weather_fade = n->payload.tag_float;
+
+        n = nbt_expect(ext, "WeatherSpeed", TAG_FLOAT);
+        if (!n) { goto fail; }
+        ea->weather_speed = n->payload.tag_float;
+    }
+
     /* CPE: EnvMapAppearance */
     ext = nbt_find_by_path(root, "ClassicWorld.Metadata.CPE.EnvMapAppearance");
     if (ext) {
@@ -336,6 +387,19 @@ pboolean tc_map_load(tc_map_t *map, const pchar *path)
         n = nbt_expect(ext, "SideLevel", TAG_SHORT);
         if (!n) { goto fail; }
         ea->side_level = n->payload.tag_short;
+
+        if (ea->extension_version >= 2) {
+            n = nbt_expect(ext, "CloudLevel", TAG_SHORT);
+            if (!n) { goto fail; }
+            ea->cloud_level = n->payload.tag_short;
+
+            n = nbt_expect(ext, "MaximumViewDistance", TAG_SHORT);
+            if (!n) { goto fail; }
+            ea->maximum_view_distance = n->payload.tag_short;
+        } else {
+            ea->cloud_level = map->y_size + 2;
+            ea->maximum_view_distance = 0;
+        }
     }
 
     /* CPE: EnvWeatherType */
@@ -554,6 +618,33 @@ pboolean tc_map_save(tc_map_t *map, const pchar *path)
             if (!save_color(ec, "Sunlight", &map->env_colors_extension->sunlight)) { goto fail; }
         }
 
+        if (map->env_aspect_extension) {
+            nbt_node *ea = nbt_make_compound("EnvMapAspect");
+            if (!ea) { goto fail; }
+            if (!nbt_put(cpe, ea)) { goto fail; }
+            if (!nbt_put(ea, nbt_make_int("ExtensionVersion",
+                         map->env_aspect_extension->extension_version))) { goto fail; }
+
+            if (!nbt_put(ea, nbt_make_byte("SideBlock",
+                         map->env_aspect_extension->side_block))) { goto fail; }
+            if (!nbt_put(ea, nbt_make_byte("EdgeBlock",
+                         map->env_aspect_extension->edge_block))) { goto fail; }
+            if (!nbt_put(ea, nbt_make_int("CloudsHeight",
+                         map->env_aspect_extension->clouds_height))) { goto fail; }
+            if (!nbt_put(ea, nbt_make_float("CloudsSpeed",
+                         map->env_aspect_extension->clouds_speed))) { goto fail; }
+            if (!nbt_put(ea, nbt_make_int("EdgeHeight",
+                         map->env_aspect_extension->edge_height))) { goto fail; }
+            if (!nbt_put(ea, nbt_make_byte("UseExponentialFog",
+                         map->env_aspect_extension->use_exponential_fog))) { goto fail; }
+            if (!nbt_put(ea, nbt_make_int("SideOffset",
+                         map->env_aspect_extension->side_offset))) { goto fail; }
+            if (!nbt_put(ea, nbt_make_float("WeatherFade",
+                         map->env_aspect_extension->weather_fade))) { goto fail; }
+            if (!nbt_put(ea, nbt_make_float("WeatherSpeed",
+                         map->env_aspect_extension->weather_speed))) { goto fail; }
+        }
+
         if (map->env_appearance_extension) {
             nbt_node *ea = nbt_make_compound("EnvMapAppearance");
             if (!ea) { goto fail; }
@@ -569,6 +660,13 @@ pboolean tc_map_save(tc_map_t *map, const pchar *path)
                          map->env_appearance_extension->edge_block))) { goto fail; }
             if (!nbt_put(ea, nbt_make_short("SideLevel",
                          map->env_appearance_extension->side_level))) { goto fail; }
+
+            if (map->env_appearance_extension->extension_version >= 2) {
+                if (!nbt_put(ea, nbt_make_short("CloudLevel",
+                             map->env_appearance_extension->cloud_level))) { goto fail; }
+                if (!nbt_put(ea, nbt_make_short("MaximumViewDistance",
+                             map->env_appearance_extension->maximum_view_distance))) { goto fail; }
+            }
         }
 
         if (map->env_weather_extension) {

@@ -13,14 +13,14 @@ typedef enum tc_map_generation_mode {
 
 typedef struct tc_map_custom_blocks_extension {
     pchar* fallback_blocks;
-    pint extension_version;
-    pshort support_level;
+    pint32 extension_version;
+    pint16 support_level;
 } tc_map_custom_blocks_extension_t;
 
 typedef struct tc_map_color_config {
-    pshort red;
-    pshort green;
-    pshort blue;
+    pint16 red;
+    pint16 green;
+    pint16 blue;
 } tc_map_color_config_t;
 
 typedef struct tc_map_env_colors_extension {
@@ -29,19 +29,39 @@ typedef struct tc_map_env_colors_extension {
     tc_map_color_config_t fog;
     tc_map_color_config_t ambient;
     tc_map_color_config_t sunlight;
-    pint extension_version;
+    pint32 extension_version;
 } tc_map_env_colors_extension_t;
+
+typedef struct tc_map_env_aspect_extension {
+    pchar side_block;
+    pchar edge_block;
+
+    pint32 clouds_height;
+    pfloat clouds_speed;
+    pint32 edge_height;
+    pchar use_exponential_fog;
+    pint32 side_offset;
+    pfloat weather_fade;
+    pfloat weather_speed;
+    
+    pint32 extension_version;
+} tc_map_env_aspect_extension_t;
 
 typedef struct tc_map_env_appearance_extension {
     pchar* texture_url;
-    pint extension_version;
-    pshort side_level;
     pchar side_block;
     pchar edge_block;
+    pint16 side_level;
+
+    //optional (for ver. 2)
+    pint16 cloud_level;
+    pint16 maximum_view_distance;
+
+    pint32 extension_version;
 } tc_map_env_appearance_extension_t;
 
 typedef struct tc_map_env_weather_extension {
-    pint extension_version;
+    pint32 extension_version;
     pchar weather_type;
 } tc_map_env_weather_extension_t;
 
@@ -66,7 +86,7 @@ typedef struct tc_map_block_definition {
 } tc_map_block_definition_t;
 
 typedef struct tc_map_block_definition_extension {
-    pint extension_version;
+    pint32 extension_version;
     PList* block_definitions;
 } tc_map_block_definition_extension_t;
 
@@ -95,6 +115,7 @@ typedef struct tc_map {
     tc_map_env_colors_extension_t* env_colors_extension;
     tc_map_env_appearance_extension_t* env_appearance_extension;
     tc_map_env_weather_extension_t* env_weather_extension;
+    tc_map_env_aspect_extension_t* env_aspect_extension;
     tc_map_block_definition_extension_t* block_definition_extensions;
 
     pint16 x_size;
@@ -116,25 +137,25 @@ typedef struct tc_map {
 
 #define TELECLASSIC26_MAP_BLOCK_INDEX(map, x, y, z) (y * map->z_size + z) * map->x_size + x
 
-static inline pshort tc_map_get_block_index(tc_map_t *map, pshort x, pshort y, pshort z) {
+static inline puint16 tc_map_get_block_index(tc_map_t *map, pshort x, pshort y, pshort z) {
     psize index = TELECLASSIC26_MAP_BLOCK_INDEX(map, x, y, z);
-    pshort block = map->block_array[index] & 0xFF;
+    puint16 block = map->block_array[index] & 0xFF;
     if (map->block_array2) {
-        pint shift = (index % 4) * 2;
+        puint16 shift = (index % 4) * 2;
         block |= ((map->block_array2[index / 4] >> shift) & 0x3) << 8;
     }
     return block;
 }
 
-static inline void tc_map_set_block_index(tc_map_t *map, pshort x, pshort y, pshort z, pshort block) {
+static inline void tc_map_set_block_index(tc_map_t *map, pshort x, pshort y, pshort z, puint16 block) {
     psize index = TELECLASSIC26_MAP_BLOCK_INDEX(map, x, y, z);
     map->is_dirty = TRUE;
     if (map->block_array2) {
-        pint shift = (index % 4) * 2;
-        map->block_array2[index / 4] = (map->block_array2[index / 4] & ~(0x3 << shift))
-                                      | (((block >> 8) & 0x3) << shift);
+        puint16 shift = (index % 4) * 2;
+        map->block_array2[index / 4] = (pchar)((map->block_array2[index / 4] & ~(0x3 << shift))
+                                      | (((block >> 8) & 0x3) << shift));
     }
-    map->block_array[index] = block & 0xFF;
+    map->block_array[index] = (pchar)(block & 0xFF);
 }
 
 static inline psize tc_map_get_memory_usage(tc_map_t *map) {
