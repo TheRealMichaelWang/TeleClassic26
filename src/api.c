@@ -25,27 +25,127 @@ typedef struct tc_send_map_data {
     send_buffer_t block_array2_buffer;
 } tc_send_map_data_t;
 
+typedef struct tc_send_buffer_task_data {
+    tc_send_map_data_t* send_map_data;
+    psize sent_count;
 
+    pboolean send_main_buffer; //true=block array1, false=block array2
+} tc_send_buffer_task_data_t;
+
+static void free_send_map_data(tc_send_map_data_t* send_map_data) {
+    if (send_map_data->map) {
+        tc_map_cache_unref(&send_map_data->session->server->map_cache, send_map_data->map);
+    }
+    if (send_map_data->block_array_buffer.data) {
+        p_free(send_map_data->block_array_buffer.data);
+    }
+    if (send_map_data->block_array2_buffer.data) {
+        p_free(send_map_data->block_array2_buffer.data);
+    }
+    p_free(send_map_data);
+}
 
 static void handle_failure(tc_send_map_data_t* send_map_data) {
     TC_ASSERT(send_map_data->priority != TC_THREAD_POOL_TASK_PRIORITY_BLOCKING, "Failure handler should not be of priority blocking");
 
     // handle the failure with the joinable if it exists
-    if (send_map_data->session->current_joinable && send_map_data->session->current_joinable->handle_map_send_failure) {
-        send_map_data->session->current_joinable->handle_map_send_failure(send_map_data->session->current_joinable, send_map_data->session, send_map_data->priority);
-    }
-
-    if (send_map_data->map) {
-        tc_map_cache_unref(&send_map_data->session->server->map_cache, send_map_data->map);
-    }
-    p_free(send_map_data);
+    send_map_data->session->current_joinable->handle_map_send_failure(send_map_data->session->current_joinable, send_map_data->session, send_map_data->priority);
 
     p_atomic_int_set(&send_map_data->session->is_sending_map, 0); //reset the flag
+    free_send_map_data(send_map_data);
+}
 
-    // unhandled failure, kick the session
-    if (!send_map_data->session->current_joinable || !send_map_data->session->current_joinable->handle_map_send_failure) {
-        tc_server_kick_session(send_map_data->session, "Unhandled map loading failure.");
+// task to schedule in case of failure for tc_send_buffer_task
+static void tc_send_buffer_handle_failure(void* arg, tc_thread_pool_task_priority_t priority) {
+    tc_send_buffer_task_data_t* send_buffer_task_data = (tc_send_buffer_task_data_t*)arg;
+    handle_failure(send_buffer_task_data->send_map_data);
+    p_free(send_buffer_task_data);
+    return;
+}
+
+// sends a chunk of the block array or block array2
+static void tc_send_buffer_task(void* arg, tc_thread_pool_task_priority_t priority) {
+    tc_send_buffer_task_data_t* send_buffer_task_data = (tc_send_buffer_task_data_t*)arg;
+    TC_ASSERT(priority == send_buffer_task_data->send_map_data->priority, "Buffer sending must be run with the requested priority.");
+
+    send_buffer_t* selected_buffer = send_buffer_task_data->send_main_buffer 
+        ? &send_buffer_task_data->send_map_data->block_array_buffer 
+        : &send_buffer_task_data->send_map_data->block_array2_buffer;
+
+    pchar current_chunk[1024];
+    pint chunk_length = TC_MIN(1024, selected_buffer->size - send_buffer_task_data->sent_count);
+    memcpy(current_chunk, &selected_buffer->data[send_buffer_task_data->sent_count], chunk_length);
+    if (chunk_length < 1024) {
+        memset(&current_chunk[chunk_length], 0, 1024 - chunk_length); //set the rest to all zeros
     }
+
+    int send_result = tc_send_level_data_chunk(
+        send_buffer_task_data->send_map_data->session->client_socket, 
+        chunk_length, 
+        current_chunk, 
+        (pchar)(!send_buffer_task_data->send_main_buffer)
+    );
+    if (!send_result) {
+        TC_LOG_SESSION(log_error, 
+            send_buffer_task_data->send_map_data->session, 
+            "Failed to send map %s: Could not send level data chunk packet (while sending bytes %zu - %zu of %zu).", 
+            send_buffer_task_data->send_map_data->file_name,
+            send_buffer_task_data->sent_count,
+            send_buffer_task_data->sent_count + chunk_length,
+            selected_buffer->size
+        );
+        handle_failure(send_buffer_task_data->send_map_data);
+        return;
+    }
+
+    send_buffer_task_data->sent_count += chunk_length;
+    if (send_buffer_task_data->sent_count >= selected_buffer->size) {
+        if (send_buffer_task_data->send_main_buffer && send_buffer_task_data->send_map_data->map->block_array2) {
+            if (tc_session_get_extension_version(send_buffer_task_data->send_map_data->session, TC_CPE_FASTMAP_EXTENSION_INDEX) < 0) {
+                TC_LOG_SESSION(log_error, send_buffer_task_data->send_map_data->session, "Failed to send map %s: ExtendedBlocks extension is not supported but required.", send_buffer_task_data->send_map_data->file_name);
+                handle_failure(send_buffer_task_data->send_map_data);
+                p_free(send_buffer_task_data);
+                return;
+            }
+
+            send_buffer_task_data->send_main_buffer = FALSE;
+            send_buffer_task_data->sent_count = 0;
+        } else {
+            int send_result = tc_send_level_finalize(
+                send_buffer_task_data->send_map_data->session->client_socket, 
+                send_buffer_task_data->send_map_data->map->x_size, 
+                send_buffer_task_data->send_map_data->map->y_size, 
+                send_buffer_task_data->send_map_data->map->z_size
+            );
+            if (!send_result) {
+                TC_LOG_SESSION(log_error, send_buffer_task_data->send_map_data->session, "Failed to send map %s: Could not send level finalize packet.", send_buffer_task_data->send_map_data->file_name);
+                handle_failure(send_buffer_task_data->send_map_data);
+                p_free(send_buffer_task_data);
+                return;
+            }
+            //world has been transmitted successfully
+            send_buffer_task_data->send_map_data->session->current_joinable->handle_map_send_success(
+                send_buffer_task_data->send_map_data->session->current_joinable, 
+                send_buffer_task_data->send_map_data->session, 
+                send_buffer_task_data->send_map_data->map, 
+                send_buffer_task_data->send_map_data->priority
+            );
+
+            p_atomic_int_set(&send_buffer_task_data->send_map_data->session->is_sending_map, 0); //reset the flag
+            free_send_map_data(send_buffer_task_data->send_map_data);
+
+            p_free(send_buffer_task_data);
+            return;
+        }
+    }
+
+    tc_thread_schedule_next(
+        &send_buffer_task_data->send_map_data->session->server->thread_pool,
+        tc_send_buffer_task, 
+        tc_send_buffer_handle_failure, 
+        send_buffer_task_data, 
+        send_buffer_task_data->send_map_data->priority
+    );
 }
 
 // Task 2: Send the main block array level init packet and set up environment packets
@@ -296,6 +396,25 @@ static void tc_send_map_task2(void* arg, tc_thread_pool_task_priority_t priority
             send_map_data->map->env_colors_extension->sunlight.blue
         ), "Could not send set map env packet for sunlight color.");
     }
+
+    tc_send_buffer_task_data_t* send_buffer_task_data = p_malloc0(sizeof(tc_send_buffer_task_data_t));
+    if (!send_buffer_task_data) {
+        TC_LOG_SESSION(log_error, send_map_data->session, "Failed to send map (name %s): Out of memory.", send_map_data->map->name);
+        handle_failure(send_map_data);
+        return;
+    }
+
+    send_buffer_task_data->send_map_data = send_map_data;
+    send_buffer_task_data->sent_count = 0;
+    send_buffer_task_data->send_main_buffer = TRUE;
+
+    tc_thread_schedule_next(
+        &send_map_data->session->server->thread_pool,
+        tc_send_buffer_task,
+        tc_send_buffer_handle_failure,
+        send_buffer_task_data,
+        send_map_data->priority
+    );
 }
 
 // Task 1: Load the map from the file system and gzip the block array and block array2
@@ -375,6 +494,11 @@ pboolean tc_api_schedule_send_map(
     tc_map_t* pre_loaded_map,
     tc_thread_pool_task_priority_t priority
 ) {
+    TC_ASSERT(
+        session->current_joinable && session->current_joinable->handle_map_send_failure && session->current_joinable->handle_map_send_success, 
+        "Current joinable must have a map send failure and success handler."
+    );
+
     TC_LOG_SESSION(log_info, session, "Begin sending map %s", file_name);
     if (!p_atomic_int_compare_and_exchange(&session->is_sending_map, 0, 1)) {
         TC_LOG_SESSION(log_error, session, "Failed to send map %s: another map is currently being sent.", file_name);

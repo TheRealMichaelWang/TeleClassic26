@@ -251,6 +251,11 @@ pboolean tc_thread_schedule_new(
 ) {
     p_mutex_lock(pool->lock);
 
+    if (pool->shutdown) {
+        p_mutex_unlock(pool->lock);
+        return FALSE;
+    }
+
     tc_thread_pool_context_t task = {
         .func = new_task,
         .arg = arg,

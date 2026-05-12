@@ -18,6 +18,8 @@
             : "N/A"                                                          \
     )
 
+#define TC_MIN(a, b) ((a) < (b) ? (a) : (b))
+
 typedef struct send_buffer {
     puint8* data;
     psize size;

@@ -47,7 +47,7 @@ typedef struct tc_joinable_interface {
     // handles a sudden stop of the server
     void (*handle_server_stop)(void* this_context);
 
-    // handles a map send failure
+    // handles a map send failure (not optional, must be implemented)
     void (*handle_map_send_failure)(void* this_context, tc_session_t* session, tc_thread_pool_task_priority_t current_priority);
 
     // handles a map send success
