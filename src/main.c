@@ -1,3 +1,6 @@
+#include "TeleClassic26/gameplay/joinable.h"
+#include "TeleClassic26/networking/api.h"
+#include "TeleClassic26/thread_pool.h"
 #include <plibsys.h>
 #include <curl/curl.h>
 #include <stdio.h>
@@ -23,11 +26,79 @@ tc_heartbeat_info_t heartbeat_info = {
     .software_name = "TeleClassic26",
 };
 
+/*
+* Rig for testing server
+*/
+
+static void* test_attempt_join(void* this_context, tc_session_t* session, const pchar* world_name, pint session_generation) {
+    pboolean success = tc_api_schedule_send_map(
+        session,
+        "lobby.cw",
+        NULL,
+        TC_THREAD_POOL_TASK_PRIORITY_MEDIUM,
+        session_generation
+    );
+    if (!success) {
+        return NULL;
+    }
+    return this_context;
+}
+
+static void test_leave(void* this_context, tc_session_t* session, pint session_generation) {
+    return;
+}
+
+static pboolean test_handle_set_block(void* this_context, tc_session_t* session, pint16 x, pint16 y, pint16 z, pchar mode, pint16 block, tc_thread_pool_task_priority_t current_priority, pint session_generation) {
+    return TRUE;
+}
+
+static pboolean test_handle_position_update(void* this_context, tc_session_t* session, pint16 x, pint16 y, pint16 z, pchar heading, pchar pitch, tc_thread_pool_task_priority_t current_priority, pint session_generation) {
+    return TRUE;
+}
+
+static pboolean test_handle_message(void* this_context, tc_session_t* session, const pchar* message, pint message_length, tc_thread_pool_task_priority_t current_priority, pint session_generation) {
+    return TRUE;
+}
+
+static void test_handle_server_stop(void* this_context) {
+    return;
+}
+
+static void test_handle_map_send_failure(void* this_context, tc_session_t* session, tc_thread_pool_task_priority_t current_priority, pint session_generation) {
+    return;
+}
+
+static void test_handle_map_send_success(void* this_context, tc_session_t* session, tc_thread_pool_task_priority_t current_priority, pint session_generation) {
+    return;
+}
+
+tc_joinable_interface_t* build_test_joinable(void) {
+    tc_joinable_interface_t* joinable = p_malloc(sizeof(tc_joinable_interface_t));
+    if (joinable == NULL) {
+        return NULL;
+    }
+    joinable->name = "lobby";
+    joinable->attempt_join = test_attempt_join;
+    joinable->leave = test_leave;
+    joinable->handle_set_block = test_handle_set_block;
+    joinable->handle_position_update = test_handle_position_update;
+    joinable->handle_message = test_handle_message;
+    joinable->handle_server_stop = test_handle_server_stop;
+    joinable->handle_map_send_failure = test_handle_map_send_failure;
+    joinable->handle_map_send_success = test_handle_map_send_success;
+    return joinable;
+}
+
+// end test rig code
+
 pboolean run_server(void) {
     tc_server_t* server = p_malloc(sizeof(tc_server_t));
     if (server == NULL) {
         return FALSE;
     }
+
+    PList* joinables = NULL;
+    joinables = p_list_append(joinables, build_test_joinable());
 
     int init_success = tc_server_init(
         server, 
@@ -37,7 +108,7 @@ pboolean run_server(void) {
         sizeof(heartbeat_services) / sizeof(tc_heartbeat_service_t), 
         heartbeat_info,
         1 << 30, //1 GB
-        NULL,
+        joinables,
         "lobby"
     );
     if (!init_success) {

@@ -14,11 +14,11 @@ typedef struct tc_joinable_interface {
     // loads the world into the client
     // - return: a pointer to the joinable interface
     // NOTE: the custom return is to allow for routing (i.e. a lobby routes to multiple sub lobbies)
-    void* (*attempt_join)(void* this_context, tc_session_t* session, const pchar* world_name);
+    void* (*attempt_join)(void* this_context, tc_session_t* session, const pchar* world_name, pint session_generation);
 
     // leaves world
     // - call this to leave the world (must be called before the session is destroyed)
-    void (*leave)(void* this_context, tc_session_t* session);
+    void (*leave)(void* this_context, tc_session_t* session, pint session_generation);
 
     /*
         Handle specific player request packets
@@ -47,10 +47,10 @@ typedef struct tc_joinable_interface {
     void (*handle_server_stop)(void* this_context);
 
     // handles a map send failure (not optional, must be implemented)
-    void (*handle_map_send_failure)(void* this_context, tc_session_t* session, tc_thread_pool_task_priority_t current_priority);
+    void (*handle_map_send_failure)(void* this_context, tc_session_t* session, tc_thread_pool_task_priority_t current_priority, pint session_generation);
 
     // handles a map send success
-    void (*handle_map_send_success)(void* this_context, tc_session_t* session, tc_thread_pool_task_priority_t current_priority);
+    void (*handle_map_send_success)(void* this_context, tc_session_t* session, tc_thread_pool_task_priority_t current_priority, pint session_generation);
 } tc_joinable_interface_t;
 
 typedef struct tc_join_router {

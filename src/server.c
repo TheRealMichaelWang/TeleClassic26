@@ -153,11 +153,11 @@ void tc_server_finalize(tc_server_t *server) {
 }
 
 // disconnects and disposes of a session
-static void disconnect_session(tc_session_t* session) {
+static void disconnect_session(tc_session_t* session, pint session_generation) {
     TC_LOG_SESSION(log_info, session, "Disconnecting session %d...", session->id);
 
     if (session->current_joinable) {
-        session->current_joinable->leave(session->current_joinable, session);
+        session->current_joinable->leave(session->current_joinable, session, session_generation);
         session->current_joinable = NULL;
     }
 
@@ -203,7 +203,7 @@ void tc_server_kick_session(tc_session_t* session, const char* msg, pint expecte
         }
         tc_protocol_kick(session->client_socket, msg);
     }
-    disconnect_session(session);
+    disconnect_session(session, expected_generation);
 
     if (aquire_lock) {
         tc_session_release_action_lock(session);
@@ -248,7 +248,7 @@ void tc_server_client_listen_task(void *arg, tc_thread_pool_task_priority_t prio
 
     if (p_time_profiler_elapsed_usecs(session->ping_profiler) > TC_SERVER_PING_INTERVAL) {
         if (!tc_protocol_ping(session->client_socket)) {
-            disconnect_session(session);
+            disconnect_session(session, session_generation);
             tc_session_release_action_lock(session);
             return;
         }

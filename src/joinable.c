@@ -35,6 +35,7 @@ void tc_join_router_finalize(tc_join_router_t* router) {
 static void stop_joinable(void* ppointer, void* userdata) {
     tc_joinable_interface_t* joinable_interface = (tc_joinable_interface_t*)ppointer;
     joinable_interface->handle_server_stop(joinable_interface);
+    p_free(joinable_interface);
 }
 
 void tc_join_router_stop_all(tc_join_router_t* router) {
@@ -104,10 +105,10 @@ pboolean tc_session_join(tc_session_t* session, const pchar* address, pint sessi
     }
 
     if (session->current_joinable) { // leave old joinable if applicable
-        session->current_joinable->leave(session->current_joinable, session);
+        session->current_joinable->leave(session->current_joinable, session, session_generation);
     }
 
-    if (!joinable->attempt_join(joinable, session, address)) {
+    if (!joinable->attempt_join(joinable, session, address, session_generation)) {
         TC_LOG_SESSION(log_error, session, "Failed to join %s.", address);
         
         //send a msg indicating that the player can't join the world or may not be allowed to join the world
@@ -121,7 +122,7 @@ pboolean tc_session_join(tc_session_t* session, const pchar* address, pint sessi
         }
 
         tc_joinable_interface_t* default_joinable = session->server->join_router.default_joinable;
-        if (!default_joinable->attempt_join(default_joinable, session, address)) {
+        if (!default_joinable->attempt_join(default_joinable, session, address, session_generation)) {
             TC_LOG_SESSION(log_error, session, "Failed to reroute playerto default/lobby.", address);
             tc_server_kick_session(session, "Failed to reroute you to default/lobby after failing to join a world.", -1, FALSE);
             

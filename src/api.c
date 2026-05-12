@@ -49,7 +49,8 @@ static void handle_success(tc_send_map_data_t* send_map_data) {
     send_map_data->session->current_joinable->handle_map_send_success(
         send_map_data->session->current_joinable, 
         send_map_data->session,
-        send_map_data->priority
+        send_map_data->priority,
+        send_map_data->session->current_generation
     );
 
     tc_session_release_action_lock(send_map_data->session);
@@ -58,7 +59,12 @@ static void handle_success(tc_send_map_data_t* send_map_data) {
 }
 
 static void handle_failure(tc_send_map_data_t* send_map_data, pboolean release_lock) {
-    send_map_data->session->current_joinable->handle_map_send_failure(send_map_data->session->current_joinable, send_map_data->session, send_map_data->priority);
+    send_map_data->session->current_joinable->handle_map_send_failure(
+        send_map_data->session->current_joinable, 
+        send_map_data->session, 
+        send_map_data->priority, 
+        send_map_data->session->current_generation
+    );
 
     if (release_lock) {
         tc_session_release_action_lock(send_map_data->session);
