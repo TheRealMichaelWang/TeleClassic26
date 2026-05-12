@@ -352,7 +352,6 @@ pboolean tc_send_level_finalize(PSocket* session, pint16 x_size, pint16 y_size, 
     if (!tc_protocol_send_short(session, x_size)) {
         return FALSE;
     }
-    return TRUE;
     if (!tc_protocol_send_short(session, y_size)) {
         return FALSE;
     }
