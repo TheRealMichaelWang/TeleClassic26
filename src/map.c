@@ -139,6 +139,8 @@ void tc_map_finalize(tc_map_t *map) {
     if (map->map_gen_software) { p_free(map->map_gen_software); }
     if (map->map_gen_name) { p_free(map->map_gen_name); }
     if (map->block_array) { p_free(map->block_array); }
+    if (map->block_array2) { p_free(map->block_array2); }
+    if (map->lock) { p_rwlock_free(map->lock); }
 
     if (map->custom_blocks_extension) {
         p_free(map->custom_blocks_extension->fallback_blocks);
@@ -153,6 +155,9 @@ void tc_map_finalize(tc_map_t *map) {
     }
     if (map->env_weather_extension) {
         p_free(map->env_weather_extension);
+    }
+    if (map->env_aspect_extension) {
+        p_free(map->env_aspect_extension);
     }
     if (map->block_definition_extensions) {
         p_list_foreach(map->block_definition_extensions->block_definitions, free_block_definition, NULL);
@@ -171,6 +176,8 @@ pboolean tc_map_load(tc_map_t *map, const pchar *path)
 
     memset(map, 0, sizeof(tc_map_t));
     map->is_dirty = FALSE;
+    map->lock = p_rwlock_new();
+    if (!map->lock) { goto fail; }
 
     nbt_node *n;
 

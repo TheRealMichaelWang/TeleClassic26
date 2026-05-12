@@ -45,11 +45,22 @@ static void free_send_map_data(tc_send_map_data_t* send_map_data) {
     p_free(send_map_data);
 }
 
+static void handle_success(tc_send_map_data_t* send_map_data) {
+    send_map_data->session->current_joinable->handle_map_send_success(
+        send_map_data->session->current_joinable, 
+        send_map_data->session,
+        send_map_data->priority
+    );
+    p_atomic_int_set(&send_map_data->session->is_sending_map, 0); //reset the flag
+    p_rwlock_reader_unlock(send_map_data->map->lock);
+    free_send_map_data(send_map_data);
+}
+
 static void handle_failure(tc_send_map_data_t* send_map_data) {
-    // handle the failure with the joinable if it exists
     send_map_data->session->current_joinable->handle_map_send_failure(send_map_data->session->current_joinable, send_map_data->session, send_map_data->priority);
 
     p_atomic_int_set(&send_map_data->session->is_sending_map, 0); //reset the flag
+    p_rwlock_reader_unlock(send_map_data->map->lock);
     free_send_map_data(send_map_data);
 }
 
@@ -119,15 +130,7 @@ static void tc_send_buffer_task(void* arg, tc_thread_pool_task_priority_t priori
                 return;
             }
             //world has been transmitted successfully
-            send_buffer_task_data->send_map_data->session->current_joinable->handle_map_send_success(
-                send_buffer_task_data->send_map_data->session->current_joinable, 
-                send_buffer_task_data->send_map_data->session, 
-                send_buffer_task_data->send_map_data->map, 
-                send_buffer_task_data->send_map_data->priority
-            );
-
-            p_atomic_int_set(&send_buffer_task_data->send_map_data->session->is_sending_map, 0); //reset the flag
-            free_send_map_data(send_buffer_task_data->send_map_data);
+            handle_success(send_buffer_task_data->send_map_data);
 
             p_free(send_buffer_task_data);
             return;
@@ -490,6 +493,7 @@ pboolean tc_api_schedule_send_map(
         tc_map_cache_ref(&session->server->map_cache, pre_loaded_map);
     }
 
+    p_rwlock_reader_lock(send_map_data->map->lock);
     int schedule_success = tc_thread_schedule_new(
         &session->server->thread_pool,
         tc_send_map_task1,
@@ -503,6 +507,7 @@ pboolean tc_api_schedule_send_map(
         }
         p_free(send_map_data);
         p_atomic_int_set(&session->is_sending_map, 0); // reset the flag
+        p_rwlock_reader_unlock(send_map_data->map->lock);
         return FALSE; // failed to schedule task 1
     }
 

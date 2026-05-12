@@ -132,22 +132,26 @@ typedef struct tc_map {
     pchar format_version; 
 
     // stuff for teleclassic26
+    PRWLock* lock;
     pboolean is_dirty;
 } tc_map_t;
 
 #define TELECLASSIC26_MAP_BLOCK_INDEX(map, x, y, z) (y * map->z_size + z) * map->x_size + x
 
 static inline puint16 tc_map_get_block_index(tc_map_t *map, pshort x, pshort y, pshort z) {
+    p_rwlock_reader_lock(map->lock);
     psize index = TELECLASSIC26_MAP_BLOCK_INDEX(map, x, y, z);
     puint16 block = map->block_array[index] & 0xFF;
     if (map->block_array2) {
         puint16 shift = (index % 4) * 2;
         block |= ((map->block_array2[index / 4] >> shift) & 0x3) << 8;
     }
+    p_rwlock_reader_unlock(map->lock);
     return block;
 }
 
 static inline void tc_map_set_block_index(tc_map_t *map, pshort x, pshort y, pshort z, puint16 block) {
+    p_rwlock_writer_lock(map->lock);
     psize index = TELECLASSIC26_MAP_BLOCK_INDEX(map, x, y, z);
     map->is_dirty = TRUE;
     if (map->block_array2) {
@@ -156,6 +160,7 @@ static inline void tc_map_set_block_index(tc_map_t *map, pshort x, pshort y, psh
                                       | (((block >> 8) & 0x3) << shift));
     }
     map->block_array[index] = (pchar)(block & 0xFF);
+    p_rwlock_writer_unlock(map->lock);
 }
 
 static inline psize tc_map_get_memory_usage(tc_map_t *map) {

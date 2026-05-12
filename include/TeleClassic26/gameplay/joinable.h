@@ -51,7 +51,7 @@ typedef struct tc_joinable_interface {
     void (*handle_map_send_failure)(void* this_context, tc_session_t* session, tc_thread_pool_task_priority_t current_priority);
 
     // handles a map send success
-    void (*handle_map_send_success)(void* this_context, tc_session_t* session, tc_map_t* map, tc_thread_pool_task_priority_t current_priority);
+    void (*handle_map_send_success)(void* this_context, tc_session_t* session, tc_thread_pool_task_priority_t current_priority);
 } tc_joinable_interface_t;
 
 typedef struct tc_join_router {
