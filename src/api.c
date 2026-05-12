@@ -51,29 +51,32 @@ static void handle_success(tc_send_map_data_t* send_map_data) {
         send_map_data->session,
         send_map_data->priority
     );
-    p_atomic_int_set(&send_map_data->session->is_sending_map, 0); //reset the flag
+
+    tc_session_release_action_lock(send_map_data->session);
     p_rwlock_reader_unlock(send_map_data->map->lock);
     free_send_map_data(send_map_data);
 }
 
-static void handle_failure(tc_send_map_data_t* send_map_data) {
+static void handle_failure(tc_send_map_data_t* send_map_data, pboolean release_lock) {
     send_map_data->session->current_joinable->handle_map_send_failure(send_map_data->session->current_joinable, send_map_data->session, send_map_data->priority);
 
-    p_atomic_int_set(&send_map_data->session->is_sending_map, 0); //reset the flag
+    if (release_lock) {
+        tc_session_release_action_lock(send_map_data->session);
+    }
     p_rwlock_reader_unlock(send_map_data->map->lock);
     free_send_map_data(send_map_data);
 }
 
 // task to schedule in case of failure for tc_send_buffer_task
-static void tc_send_buffer_handle_failure(void* arg, tc_thread_pool_task_priority_t priority) {
+static void tc_send_buffer_handle_failure(void* arg, tc_thread_pool_task_priority_t priority, pint session_generation) {
     tc_send_buffer_task_data_t* send_buffer_task_data = (tc_send_buffer_task_data_t*)arg;
-    handle_failure(send_buffer_task_data->send_map_data);
+    handle_failure(send_buffer_task_data->send_map_data, TRUE);
     p_free(send_buffer_task_data);
     return;
 }
 
 // sends a chunk of the block array or block array2
-static void tc_send_buffer_task(void* arg, tc_thread_pool_task_priority_t priority) {
+static void tc_send_buffer_task(void* arg, tc_thread_pool_task_priority_t priority, pint session_generation) {
     tc_send_buffer_task_data_t* send_buffer_task_data = (tc_send_buffer_task_data_t*)arg;
     TC_ASSERT(priority == send_buffer_task_data->send_map_data->priority, "Buffer sending must be run with the requested priority.");
 
@@ -106,7 +109,7 @@ static void tc_send_buffer_task(void* arg, tc_thread_pool_task_priority_t priori
             send_buffer_task_data->sent_count + chunk_length,
             selected_buffer->size
         );
-        handle_failure(send_buffer_task_data->send_map_data);
+        handle_failure(send_buffer_task_data->send_map_data, TRUE);
         p_free(send_buffer_task_data);
         return;
     }
@@ -125,7 +128,7 @@ static void tc_send_buffer_task(void* arg, tc_thread_pool_task_priority_t priori
             );
             if (!send_result) {
                 TC_LOG_SESSION(log_error, send_buffer_task_data->send_map_data->session, "Failed to send map %s: Could not send level finalize packet.", send_buffer_task_data->send_map_data->file_name);
-                handle_failure(send_buffer_task_data->send_map_data);
+                handle_failure(send_buffer_task_data->send_map_data, TRUE);
                 p_free(send_buffer_task_data);
                 return;
             }
@@ -142,19 +145,24 @@ static void tc_send_buffer_task(void* arg, tc_thread_pool_task_priority_t priori
         tc_send_buffer_task, 
         tc_send_buffer_handle_failure, 
         send_buffer_task_data, 
-        send_buffer_task_data->send_map_data->priority
+        send_buffer_task_data->send_map_data->priority,
+        session_generation
     );
 }
 
 // Task 2: Send the main block array level init packet and set up environment packets
-static void tc_send_map_task2(void* arg, tc_thread_pool_task_priority_t priority) {
+static void tc_send_map_task2(void* arg, tc_thread_pool_task_priority_t priority, pint session_generation) {
     tc_send_map_data_t* send_map_data = (tc_send_map_data_t*)arg;
     TC_ASSERT(priority == send_map_data->priority, "Map sending must be run with the requested priority.");
+
+    if (!tc_session_aquire_action_lock(send_map_data->session, session_generation)) {
+        return;
+    }
 
     #define HANDLE_FAILURE(ACTION, FAILURE_MESSAGE) { \
         if (!ACTION) { \
             TC_LOG_SESSION(log_error, send_map_data->session, "Failed to send map %s: " FAILURE_MESSAGE ".", send_map_data->file_name); \
-            handle_failure(send_map_data); \
+            handle_failure(send_map_data, TRUE); \
             return; \
         } \
     }
@@ -172,7 +180,7 @@ static void tc_send_map_task2(void* arg, tc_thread_pool_task_priority_t priority
     if (send_map_data->map->env_aspect_extension) {
         if (tc_session_get_extension_version(send_map_data->session, TC_CPE_ENV_MAP_APPEARANCE_EXTENSION_INDEX) < 0) {
             TC_LOG_SESSION(log_error, send_map_data->session, "Failed to send map (name %s): EnvMapAppearance extension is not supported but required.", send_map_data->map->name);
-            handle_failure(send_map_data);
+            handle_failure(send_map_data, TRUE);
             return;
         }
 
@@ -239,7 +247,7 @@ static void tc_send_map_task2(void* arg, tc_thread_pool_task_priority_t priority
         if (send_map_data->map->env_appearance_extension->extension_version > client_supported_version) {
             if (tc_session_get_extension_version(send_map_data->session, TC_CPE_ENV_MAP_ASPECT_EXTENSION_INDEX) < 0) {
                 TC_LOG_SESSION(log_error, send_map_data->session, "Failed to send map (name %s): EnvMapAppearance extension is not supported but required.", send_map_data->map->name);
-                handle_failure(send_map_data);
+                handle_failure(send_map_data, TRUE);
                 return;
             }
 
@@ -306,7 +314,7 @@ static void tc_send_map_task2(void* arg, tc_thread_pool_task_priority_t priority
     if (send_map_data->map->env_weather_extension) {
         if (tc_session_get_extension_version(send_map_data->session, TC_CPE_ENV_MAP_WEATHER_TYPE_EXTENSION_INDEX) < 0) {
             TC_LOG_SESSION(log_error, send_map_data->session, "Failed to send map (name %s): EnvMapWeatherType extension is not supported but required.", send_map_data->map->name);
-            handle_failure(send_map_data);
+            handle_failure(send_map_data, TRUE);
             return;
         }
 
@@ -319,7 +327,7 @@ static void tc_send_map_task2(void* arg, tc_thread_pool_task_priority_t priority
     if (send_map_data->map->env_colors_extension) {
         if (tc_session_get_extension_version(send_map_data->session, TC_CPE_ENV_MAP_COLORS_EXTENSION_INDEX) < 0) {
             TC_LOG_SESSION(log_error, send_map_data->session, "Failed to send map (name %s): EnvMapColors extension is not supported but required.", send_map_data->map->name);
-            handle_failure(send_map_data);
+            handle_failure(send_map_data, TRUE);
             return;
         }
      
@@ -367,7 +375,7 @@ static void tc_send_map_task2(void* arg, tc_thread_pool_task_priority_t priority
     tc_send_buffer_task_data_t* send_buffer_task_data = p_malloc0(sizeof(tc_send_buffer_task_data_t));
     if (!send_buffer_task_data) {
         TC_LOG_SESSION(log_error, send_map_data->session, "Failed to send map (name %s): Out of memory.", send_map_data->map->name);
-        handle_failure(send_map_data);
+        handle_failure(send_map_data, TRUE);
         return;
     }
 
@@ -380,12 +388,13 @@ static void tc_send_map_task2(void* arg, tc_thread_pool_task_priority_t priority
         tc_send_buffer_task,
         tc_send_buffer_handle_failure,
         send_buffer_task_data,
-        send_map_data->priority
+        send_map_data->priority,
+        session_generation
     );
 }
 
 // Task 1: Load the map from the file system and gzip the block array and block array2
-static void tc_send_map_task1(void* arg, tc_thread_pool_task_priority_t priority) {
+static void tc_send_map_task1(void* arg, tc_thread_pool_task_priority_t priority, pint session_generation) {
     tc_send_map_data_t* send_map_data = (tc_send_map_data_t*)arg;
     TC_ASSERT(priority == TC_THREAD_POOL_TASK_PRIORITY_BLOCKING, "Map loading/compression must be run with blocking priority");
     
@@ -393,7 +402,7 @@ static void tc_send_map_task1(void* arg, tc_thread_pool_task_priority_t priority
         tc_map_t* map = tc_map_cache_open(&send_map_data->session->server->map_cache, send_map_data->file_name);
         if (!map) {
             TC_LOG_SESSION(log_error, send_map_data->session, "Failed to send map %s: Could not load map.", send_map_data->file_name);
-            handle_failure(send_map_data);
+            handle_failure(send_map_data, FALSE);
             return;
         }
         send_map_data->map = map;
@@ -415,14 +424,14 @@ static void tc_send_map_task1(void* arg, tc_thread_pool_task_priority_t priority
     }
     if (!result) {
         TC_LOG_SESSION(log_error, send_map_data->session, "Failed to send map (name %s): Could not compress block array.", send_map_data->map->name);
-        handle_failure(send_map_data);
+        handle_failure(send_map_data, FALSE);
         return;
     }
 
     if (send_map_data->map->block_array2) {
         if (tc_session_get_extension_version(send_map_data->session, TC_CPE_EXTENDED_BLOCKS_EXTENSION_INDEX) < 0) {
             TC_LOG_SESSION(log_error, send_map_data->session, "Failed to send map (name %s): ExtendedBlocks extension is not supported but required.", send_map_data->map->name);
-            handle_failure(send_map_data);
+            handle_failure(send_map_data, FALSE);
             return;
         }
 
@@ -441,7 +450,7 @@ static void tc_send_map_task1(void* arg, tc_thread_pool_task_priority_t priority
         }
         if (!result) {
             TC_LOG_SESSION(log_error, send_map_data->session, "Failed to send map (name %s): Could not compress block array2.", send_map_data->map->name);
-            handle_failure(send_map_data);
+            handle_failure(send_map_data, FALSE);
             return;
         }
     }
@@ -450,11 +459,12 @@ static void tc_send_map_task1(void* arg, tc_thread_pool_task_priority_t priority
         &send_map_data->session->server->thread_pool,
         tc_send_map_task2,
         send_map_data,
-        send_map_data->priority
+        send_map_data->priority,
+        session_generation
     );
     if (!result) {
         TC_LOG_SESSION(log_error, send_map_data->session, "Failed to send map (name %s): Could not schedule task 2.", send_map_data->map->name);
-        handle_failure(send_map_data);
+        handle_failure(send_map_data, FALSE);
         return;
     }
 
@@ -465,7 +475,8 @@ pboolean tc_api_schedule_send_map(
     tc_session_t* session,
     const pchar* file_name, 
     tc_map_t* pre_loaded_map,
-    tc_thread_pool_task_priority_t priority
+    tc_thread_pool_task_priority_t priority,
+    pint session_generation
 ) {
     TC_ASSERT(
         session->current_joinable && session->current_joinable->handle_map_send_failure && session->current_joinable->handle_map_send_success, 
@@ -473,15 +484,10 @@ pboolean tc_api_schedule_send_map(
     );
 
     TC_LOG_SESSION(log_info, session, "Begin sending map %s", file_name);
-    if (!p_atomic_int_compare_and_exchange(&session->is_sending_map, 0, 1)) {
-        TC_LOG_SESSION(log_error, session, "Failed to send map %s: another map is currently being sent.", file_name);
-        return FALSE; // someone is already sending a map
-    }
 
     tc_send_map_data_t* send_map_data = p_malloc0(sizeof(tc_send_map_data_t));
     if (!send_map_data) {
         TC_LOG_SESSION(log_error, session, "Failed to send map %s: Out of Memory", file_name);
-        p_atomic_int_set(&session->is_sending_map, 0); // reset the flag
         return FALSE; // out of memory
     }
 
@@ -498,7 +504,8 @@ pboolean tc_api_schedule_send_map(
         &session->server->thread_pool,
         tc_send_map_task1,
         send_map_data,
-        TC_THREAD_POOL_TASK_PRIORITY_BLOCKING // map loading/compression must be run with blocking priority
+        TC_THREAD_POOL_TASK_PRIORITY_BLOCKING, // map loading/compression must be run with blocking priority,
+        session_generation
     );
     if (!schedule_success) {
         TC_LOG_SESSION(log_error, session, "Failed to send map %s: Failed to schedule task 1", file_name);
@@ -506,7 +513,6 @@ pboolean tc_api_schedule_send_map(
             tc_map_cache_unref(&session->server->map_cache, pre_loaded_map);
         }
         p_free(send_map_data);
-        p_atomic_int_set(&session->is_sending_map, 0); // reset the flag
         p_rwlock_reader_unlock(send_map_data->map->lock);
         return FALSE; // failed to schedule task 1
     }

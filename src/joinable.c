@@ -6,6 +6,7 @@
 #include <TeleClassic26/gameplay/joinable.h>
 #include <TeleClassic26/networking/server.h>
 #include <TeleClassic26/networking/protocol.h>
+#include <TeleClassic26/networking/api.h>
 #include <TeleClassic26/utils.h>
 #include <TeleClassic26/log.h>
 
@@ -87,13 +88,19 @@ tc_joinable_interface_t* tc_find_joinable(tc_join_router_t* router, const pchar*
     return userdata.best_match;
 }
 
-pboolean tc_session_join(tc_session_t* session, const pchar* address) {
+pboolean tc_session_join(tc_session_t* session, const pchar* address, pint session_generation, pboolean aquire_lock) {
     tc_joinable_interface_t* joinable = tc_find_joinable(&session->server->join_router, address);
     if (!joinable) {
         TC_LOG_SESSION(log_error, session, "Failed to find %s that player can join. ", address);
         
         //send a msg indicating that the player can't join the world
         return TRUE;
+    }
+
+    if (aquire_lock) {
+        if (!tc_session_aquire_action_lock(session, session_generation)) {
+            return FALSE;
+        }
     }
 
     if (session->current_joinable) { // leave old joinable if applicable
@@ -104,18 +111,36 @@ pboolean tc_session_join(tc_session_t* session, const pchar* address) {
         TC_LOG_SESSION(log_error, session, "Failed to join %s.", address);
         
         //send a msg indicating that the player can't join the world or may not be allowed to join the world
-        
+        if(!tc_api_send_message(session, TC_MESSAGE_TYPE_CHAT, "Failed to join world.")) {
+            TC_LOG_SESSION(log_error, session, "Failed to send message indicating that the player can't join the world.");
+            tc_server_kick_session(session, "Failed to send message indicating that the player can't join the world.", -1, FALSE);
+            if (aquire_lock) {
+                tc_session_release_action_lock(session);
+            }
+            return FALSE;
+        }
+
         tc_joinable_interface_t* default_joinable = session->server->join_router.default_joinable;
         if (!default_joinable->attempt_join(default_joinable, session, address)) {
             TC_LOG_SESSION(log_error, session, "Failed to reroute playerto default/lobby.", address);
-            tc_server_kick_session(session, "Failed to reroute you to default/lobby after failing to join a world.");
+            tc_server_kick_session(session, "Failed to reroute you to default/lobby after failing to join a world.", -1, FALSE);
+            
+            if (aquire_lock) {
+                tc_session_release_action_lock(session);
+            }
             return FALSE;
         }
         session->current_joinable = default_joinable;
+        if (aquire_lock) {
+            tc_session_release_action_lock(session);
+        }
         return TRUE;
     }
 
     session->current_joinable = joinable;
+    if (aquire_lock) {
+        tc_session_release_action_lock(session);
+    }
     return TRUE;
 }
 

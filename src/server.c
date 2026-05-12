@@ -86,13 +86,40 @@ pboolean tc_server_init(
         p_socket_address_free(server->address);
         tc_heartbeat_manager_finalize(&server->heartbeat_manager);
         tc_map_cache_finalize(&server->map_cache);
+
         return FALSE;
     }
 
     server->lock = p_mutex_new();
+    if (!server->lock) {
+        tc_thread_pool_stop(&server->thread_pool);
+        tc_thread_pool_finalize(&server->thread_pool);
+        p_socket_free(server->listener_socket);
+        p_socket_address_free(server->address);
+        tc_heartbeat_manager_finalize(&server->heartbeat_manager);
+        tc_map_cache_finalize(&server->map_cache);
+        tc_join_router_finalize(&server->join_router);
+        return FALSE;
+    }
 
     for (pint i = 0; i < TC_SERVER_MAX_SESSIONS; i++) {
         server->id_buffer[i] = i;
+        p_atomic_int_set(&server->session_buffer[i].current_generation, 0);
+        server->session_buffer[i].action_lock = p_mutex_new();
+        if (!server->session_buffer[i].action_lock) {
+            tc_thread_pool_stop(&server->thread_pool);
+            tc_thread_pool_finalize(&server->thread_pool);
+            p_socket_free(server->listener_socket);
+            p_socket_address_free(server->address);
+            tc_heartbeat_manager_finalize(&server->heartbeat_manager);
+            tc_map_cache_finalize(&server->map_cache);
+            tc_join_router_finalize(&server->join_router);
+            for (pint j = 0; j < i; j++) {
+                p_mutex_free(server->session_buffer[j].action_lock);
+            }
+            p_mutex_free(server->lock);
+            return FALSE;
+        }
     }
     server->id_buffer_head = 0;
     server->active_players = 0;
@@ -119,6 +146,10 @@ void tc_server_finalize(tc_server_t *server) {
     tc_heartbeat_manager_finalize(&server->heartbeat_manager);
     tc_join_router_finalize(&server->join_router);
     tc_map_cache_finalize(&server->map_cache);
+
+    for (pint i = 0; i < TC_SERVER_MAX_SESSIONS; i++) {
+        p_mutex_free(server->session_buffer[i].action_lock);
+    }
 }
 
 // disconnects and disposes of a session
@@ -145,6 +176,8 @@ static void disconnect_session(tc_session_t* session) {
         p_time_profiler_free(session->ping_profiler);
     }
 
+    p_atomic_int_inc(&session->current_generation);
+
     // add the session id back to the id buffer
     p_mutex_lock(session->server->lock);
     
@@ -159,7 +192,11 @@ static void disconnect_session(tc_session_t* session) {
 }
 
 // kicks a session from the server
-void tc_server_kick_session(tc_session_t* session, const char* msg) {
+void tc_server_kick_session(tc_session_t* session, const char* msg, pint expected_generation, pboolean aquire_lock) {
+    if (aquire_lock && !tc_session_aquire_action_lock(session, expected_generation)) {
+        return;
+    }
+    
     if (msg) {
         if (session->authenticated_service) {
             TC_LOG_SESSION(log_info, session, "Kicking session %d.", session->id);
@@ -167,10 +204,14 @@ void tc_server_kick_session(tc_session_t* session, const char* msg) {
         tc_protocol_kick(session->client_socket, msg);
     }
     disconnect_session(session);
+
+    if (aquire_lock) {
+        tc_session_release_action_lock(session);
+    }
 }
 
 // cleans up pending packet buffer and schedules next task in client task chain
-void tc_server_protocol_handler_cleanup(tc_session_t* session, tc_thread_pool_task_t next_task, tc_thread_pool_task_priority_t priority) {
+void tc_server_protocol_handler_cleanup(tc_session_t* session, tc_thread_pool_task_t next_task, tc_thread_pool_task_priority_t priority, pint session_generation) {
     p_free(session->pending_packet_buffer);
     session->pending_packet_opcode = -1;
     session->pending_packet_buffer = NULL;
@@ -182,7 +223,8 @@ void tc_server_protocol_handler_cleanup(tc_session_t* session, tc_thread_pool_ta
             next_task,
             tc_server_shutdown_client_task,
             session,
-            priority
+            priority,
+            session_generation
         );
     }
 }
@@ -190,18 +232,24 @@ void tc_server_protocol_handler_cleanup(tc_session_t* session, tc_thread_pool_ta
 // kicks a session from the server because the server is busy
 // Just a wrapper for kick_session with a default message
 // - session: the session to kick
- void tc_server_shutdown_client_task(void* arg, tc_thread_pool_task_priority_t priority) {
+void tc_server_shutdown_client_task(void* arg, tc_thread_pool_task_priority_t priority, pint session_generation) {
     tc_session_t *session = (tc_session_t *)arg;
-    tc_server_kick_session(session, "Server is Shutting Down: Please come back later!");
+    tc_server_kick_session(session, "Server is Shutting Down: Please come back later!", session_generation, TRUE);
 }
 
 // worker thread for listening for new clients
-void tc_server_client_listen_task(void *arg, tc_thread_pool_task_priority_t priority) {
+// NOTE: This is the ONLY task/function that can write to thepending packet buffer, pending packet opcode
+void tc_server_client_listen_task(void *arg, tc_thread_pool_task_priority_t priority, pint session_generation) {
     tc_session_t *session = (tc_session_t *)arg;
+
+    if (!tc_session_aquire_action_lock(session, session_generation)) {
+        return;
+    }
 
     if (p_time_profiler_elapsed_usecs(session->ping_profiler) > TC_SERVER_PING_INTERVAL) {
         if (!tc_protocol_ping(session->client_socket)) {
             disconnect_session(session);
+            tc_session_release_action_lock(session);
             return;
         }
         p_time_profiler_reset(session->ping_profiler);
@@ -223,12 +271,14 @@ void tc_server_client_listen_task(void *arg, tc_thread_pool_task_priority_t prio
             // validate the packet opcode
             if (session->pending_packet_opcode < 0 || session->pending_packet_opcode >= TC_PACKET_HANDLERS_MAX_PACKETS) {
                 p_error_free(error);
-                tc_server_kick_session(session, "Packet Opcode Out of Range: Please reconnect.");
+                tc_server_kick_session(session, "Packet Opcode Out of Range: Please reconnect.", -1, FALSE);
+                tc_session_release_action_lock(session);
                 return;
             }
             if (tc_packet_handlers[session->pending_packet_opcode] == NULL) {
                 p_error_free(error);
-                tc_server_kick_session(session, "Invalid Packet Opcode: Please reconnect.");
+                tc_server_kick_session(session, "Invalid Packet Opcode: Please reconnect.", -1, FALSE);
+                tc_session_release_action_lock(session);
                 return;
             }
 
@@ -238,12 +288,14 @@ void tc_server_client_listen_task(void *arg, tc_thread_pool_task_priority_t prio
             session->pending_packet_buffer_size = 0;
             if (session->pending_packet_buffer == NULL) {
                 p_error_free(error);
-                tc_server_kick_session(session, "Out of Memory: Sorry");
+                tc_server_kick_session(session, "Out of Memory: Sorry", -1, FALSE);
+                tc_session_release_action_lock(session);
                 return;
             }
         }
         else if (read_size == 0) { // client disconnected
-            tc_server_kick_session(session, "Client Disconnected: Please reconnect.");
+            tc_server_kick_session(session, "Client Disconnected: Please reconnect.", -1, FALSE);
+            tc_session_release_action_lock(session);
             p_error_free(error);
             return;
         }
@@ -269,14 +321,17 @@ void tc_server_client_listen_task(void *arg, tc_thread_pool_task_priority_t prio
                     handler,
                     tc_server_shutdown_client_task,
                     session,
-                    priority
+                    priority,
+                    session_generation
                 );
+                tc_session_release_action_lock(session);
                 return;
             }
         }
         else if (read_size == 0) { // client disconnected
             p_error_free(error);
-            tc_server_kick_session(session, "Client Disconnected: Please reconnect.");
+            tc_server_kick_session(session, "Client Disconnected: Please reconnect.", -1, FALSE);
+            tc_session_release_action_lock(session);
             return;
         }
     }
@@ -287,14 +342,17 @@ void tc_server_client_listen_task(void *arg, tc_thread_pool_task_priority_t prio
             tc_server_client_listen_task,
             tc_server_shutdown_client_task,
             session,
-            priority
+            priority,
+            session_generation
         );
+        tc_session_release_action_lock(session);
         p_error_free(error);
         return;
     }
 
     // if an error occurred, kick the session
-    tc_server_kick_session(session, "Error: Please reconnect.");
+    tc_server_kick_session(session, "Error: Please reconnect.", -1, FALSE);
+    tc_session_release_action_lock(session);
     p_error_free(error);
 }
 
@@ -320,6 +378,11 @@ static void handle_new_session(tc_server_t* server, PSocket* client_socket) {
 
     // Initialize the session here
     tc_session_t* session = &server->session_buffer[session_id];
+    pint session_generation = p_atomic_int_get(&session->current_generation);
+    if (!tc_session_aquire_action_lock(session, session_generation)) {
+        return;
+    }
+
     session->client_socket = client_socket;
     session->id = session_id;
     session->server = server;
@@ -329,14 +392,14 @@ static void handle_new_session(tc_server_t* server, PSocket* client_socket) {
     session->supports_cpe = FALSE;
     session->authenticated_service = NULL;
     session->current_joinable = NULL;
-    session->is_sending_map = FALSE;
     session->remaining_cpe_ext_packets = -1;
     session->custom_block_support_level = 0;
     memset(session->ext_cpe_versions, 0, sizeof(session->ext_cpe_versions));
 
     session->ping_profiler = p_time_profiler_new();
     if (!session->ping_profiler) {
-        tc_server_kick_session(session, "Out of Memory: Sorry");
+        tc_server_kick_session(session, "Out of Memory: Sorry", -1, FALSE);
+        tc_session_release_action_lock(session);
         return;
     }
 
@@ -344,16 +407,18 @@ static void handle_new_session(tc_server_t* server, PSocket* client_socket) {
         &server->thread_pool,
         tc_server_client_listen_task,
         session,
-        TC_THREAD_POOL_TASK_PRIORITY_LOW
+        TC_THREAD_POOL_TASK_PRIORITY_LOW,
+        session_generation
     );
     if (!schedule_success) {
         log_warn("Task pool is busy, failed to accomodate new client.");
-        tc_server_kick_session(session, "Server is Busy: Please try again or come back soon.");
+        tc_server_kick_session(session, "Server is Busy: Please try again or come back soon.", session_generation, TRUE);    
     }
+    tc_session_release_action_lock(session);
 }
 
 // Main task chain for listining/accepting new clients
-static void listener_worker_task(void *arg, tc_thread_pool_task_priority_t priority) {
+static void listener_worker_task(void *arg, tc_thread_pool_task_priority_t priority, pint session_generation) {
     tc_server_t *server = (tc_server_t *)arg;
 
     PSocket* client_socket = p_socket_accept(server->listener_socket, NULL);
@@ -368,7 +433,8 @@ static void listener_worker_task(void *arg, tc_thread_pool_task_priority_t prior
         listener_worker_task,
         NULL,
         server,
-        priority
+        priority,
+        -1
     );
     return;
 }
@@ -390,7 +456,8 @@ pboolean tc_server_start(tc_server_t *server) {
         &server->thread_pool,
         listener_worker_task,
         server,
-        TC_THREAD_POOL_TASK_PRIORITY_HIGH
+        TC_THREAD_POOL_TASK_PRIORITY_HIGH,
+        -1
     );
     if (!schedule_success) {
         log_error("Failed to schedule listener worker task");
@@ -419,4 +486,17 @@ pint tc_session_get_extension_version(tc_session_t* session, const pint extensio
         return -1;
     }
     return (session->ext_cpe_versions[extension_index / 4] >> (extension_index % 4 * 2)) & 0x3;
+}
+
+pboolean tc_session_aquire_action_lock(tc_session_t* session, pint expected_generation) {
+    p_mutex_lock(session->action_lock);
+    if (p_atomic_int_get(&session->current_generation) != expected_generation) {
+        p_mutex_unlock(session->action_lock);
+        return FALSE;
+    }
+    return TRUE;
+}
+
+void tc_session_release_action_lock(tc_session_t* session) {
+    p_mutex_unlock(session->action_lock);
 }

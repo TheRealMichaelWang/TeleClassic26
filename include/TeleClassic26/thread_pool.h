@@ -15,12 +15,13 @@ typedef enum tc_thread_pool_task_priority {
     TC_THREAD_POOL_TASK_PRIORITY_LOW = 3
 } tc_thread_pool_task_priority_t;
 
-typedef void (*tc_thread_pool_task_t)(void *arg, tc_thread_pool_task_priority_t priority);
+typedef void (*tc_thread_pool_task_t)(void *arg, tc_thread_pool_task_priority_t priority, pint session_generation);
 
 typedef struct tc_thread_pool_context {
     tc_thread_pool_task_priority_t priority;
     tc_thread_pool_task_t func;
     void *arg;
+    pint session_generation;
 } tc_thread_pool_context_t;
 
 typedef struct tc_thread_pool_task_buf {
@@ -97,7 +98,8 @@ pboolean tc_thread_schedule_new(
     tc_thread_pool_t *pool,
     tc_thread_pool_task_t new_task,
     void *arg,
-    tc_thread_pool_task_priority_t priority
+    tc_thread_pool_task_priority_t priority,
+    pint session_generation
 );
 
 // Schedule a next task to the thread pool
@@ -112,7 +114,8 @@ void tc_thread_schedule_next(
     tc_thread_pool_task_t next_task,
     tc_thread_pool_task_t shutdown_task,
     void *arg,
-    tc_thread_pool_task_priority_t current_priority
+    tc_thread_pool_task_priority_t current_priority,
+    pint current_session_generation
 );
 
 #endif /* MICHAEL_THREADS_THREAD_POOL_H */

@@ -24,6 +24,7 @@ typedef struct tc_session {
     tc_server_t *server;
 
     PTimeProfiler* ping_profiler;
+    PMutex* action_lock;
     tc_heartbeat_service_t* authenticated_service;
     tc_joinable_interface_t* current_joinable;
 
@@ -33,9 +34,9 @@ typedef struct tc_session {
 
     pboolean supports_cpe;
 
-    volatile pint is_sending_map;
-
+    volatile pint current_generation;
     pint id;
+
     pshort remaining_cpe_ext_packets;
     pchar custom_block_support_level;
 } tc_session_t;
@@ -98,29 +99,41 @@ void tc_server_stop(tc_server_t *server);
 // kicks a session from the server and disconnects/disposes of the session
 // - session: the session to kick
 // - msg: the message to send to the session (can be NULL for no kick message)
-void tc_server_kick_session(tc_session_t* session, const char* msg);
+// - expected_generation: the expected generation of the session
+// - aquire_lock: whether to aquire the action lock for the session
+void tc_server_kick_session(tc_session_t* session, const char* msg, pint expected_generation, pboolean aquire_lock);
 
 // cleans up pending packet buffer and schedules next task in client task chain
 // - session: the session to cleanup
 // - next_task: the next task to schedule; usually should be tc_server_client_listen_worker
 // - priority: the priority of the current task chain
 // NOTE: call this function at the end of each protocol packet handler
-void tc_server_protocol_handler_cleanup(tc_session_t* session, tc_thread_pool_task_t next_task, tc_thread_pool_task_priority_t priority);
+void tc_server_protocol_handler_cleanup(tc_session_t* session, tc_thread_pool_task_t next_task, tc_thread_pool_task_priority_t priority, pint session_generation);
 
 // Task that kicks a client and disconnects gracefully
 // - arg: pointer to the session to kick
 // NOTE: use as part of client task chain as the shutdown task
-void tc_server_shutdown_client_task(void* arg, tc_thread_pool_task_priority_t priority);
+void tc_server_shutdown_client_task(void* arg, tc_thread_pool_task_priority_t priority, pint session_generation);
 
 // Task that listening for new clients; part of client task chain
 // - arg: pointer to the session to listen for new clients
 // NOTE: use this function to schedule the next task in a task chain
-void tc_server_client_listen_task(void *arg, tc_thread_pool_task_priority_t priority);
+void tc_server_client_listen_task(void *arg, tc_thread_pool_task_priority_t priority, pint session_generation);
 
 // Gets the version of a supported extension by name
 // - session: the session to get the extension version from
 // - extension_index: the index of the extension to get the version of
 // - return: the version of the extension, -1 if not found
 pint tc_session_get_extension_version(tc_session_t* session, const pint extension_index);
+
+// Aquires the action lock for the session
+// - session: the session to aquire the action lock for
+// - return: TRUE if the action lock was aquired, FALSE otherwise
+// NOTE: must call before doing anything with protocol send methods, setting joinable, etc...
+pboolean tc_session_aquire_action_lock(tc_session_t* session, pint expected_generation);
+
+// Releases the action lock for the session
+// - session: the session to release the action lock for
+void tc_session_release_action_lock(tc_session_t* session);
 
 #endif /* TELECLASSIC26_SERVER_H */

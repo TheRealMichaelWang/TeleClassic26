@@ -5,11 +5,14 @@
 #include <TeleClassic26/networking/server.h>
 #include <TeleClassic26/gameplay/joinable.h>
 #include <TeleClassic26/log.h>
+#include <stdbool.h>
 #include <string.h>
 
-static void finalize_player_identification(tc_session_t* session, tc_thread_pool_task_priority_t priority);
+// NOTE: all handlers already aquired the sessions action lock - no need to aquire it again
 
-static void handle_begin_cpe_negotiation(void* arg, tc_thread_pool_task_priority_t priority) {
+static void finalize_player_identification(tc_session_t* session, tc_thread_pool_task_priority_t priority, pint session_generation);
+
+static void handle_begin_cpe_negotiation(void* arg, tc_thread_pool_task_priority_t priority, pint session_generation) {
     tc_session_t* session = (tc_session_t*)arg;
     TC_ASSERT(session->supports_cpe, "Session does not support CPE.");
 
@@ -18,7 +21,7 @@ static void handle_begin_cpe_negotiation(void* arg, tc_thread_pool_task_priority
     // send extinfo packet
     pboolean extinfo_success = tc_cpe_send_extinfo(session->client_socket, "TeleClassic26");
     if (!extinfo_success) {
-        tc_server_kick_session(session, "Could not send CPE extinfo packet.");
+        tc_server_kick_session(session, "Could not send CPE extinfo packet.", -1, FALSE);
         return;
     }
 
@@ -30,20 +33,20 @@ static void handle_begin_cpe_negotiation(void* arg, tc_thread_pool_task_priority
             tc_supported_extensions[i].version
         );
         if (!extentry_success) {
-            tc_server_kick_session(session, "Could not send CPE extentry packet.");
+            tc_server_kick_session(session, "Could not send CPE extentry packet.", -1, FALSE);
             return;
         }
     }
 
-    tc_server_protocol_handler_cleanup(session, tc_server_client_listen_task, priority);
+    tc_server_protocol_handler_cleanup(session, tc_server_client_listen_task, priority, session_generation);
 }
 
-static void handle_cpe_extinfo(void* arg, tc_thread_pool_task_priority_t priority) {
+static void handle_cpe_extinfo(void* arg, tc_thread_pool_task_priority_t priority, pint session_generation) {
     tc_session_t* session = (tc_session_t*)arg;
     TC_ASSERT(session->supports_cpe, "Session does not support CPE.");
 
     if (session->remaining_cpe_ext_packets >= 0) {
-        tc_server_kick_session(session, "Client cannot send more than 1 CPE extinfo packet.");
+        tc_server_kick_session(session, "Client cannot send more than 1 CPE extinfo packet.", -1, FALSE);
         return;
     }
 
@@ -57,15 +60,15 @@ static void handle_cpe_extinfo(void* arg, tc_thread_pool_task_priority_t priorit
 
     TC_LOG_SESSION(log_info, session, "Received CPE extinfo packet (app: %.*s, extension count: %d)", TC_PROTOCOL_MAX_STR_LEN, appname, extension_count);
 
-    tc_server_protocol_handler_cleanup(session, tc_server_client_listen_task, priority);
+    tc_server_protocol_handler_cleanup(session, tc_server_client_listen_task, priority, session_generation);
 }
 
-static void handle_cpe_extentry(void* arg, tc_thread_pool_task_priority_t priority) {
+static void handle_cpe_extentry(void* arg, tc_thread_pool_task_priority_t priority, pint session_generation) {
     tc_session_t* session = (tc_session_t*)arg;
     TC_ASSERT(session->supports_cpe, "Session does not support CPE.");
 
     if (session->remaining_cpe_ext_packets == 0) {
-        tc_server_kick_session(session, "Client has already sent all extension packets.");
+        tc_server_kick_session(session, "Client has already sent all extension packets.", -1, FALSE);
         return;
     }
 
@@ -73,13 +76,13 @@ static void handle_cpe_extentry(void* arg, tc_thread_pool_task_priority_t priori
     tc_protocol_decode_string(extension_name, &session->pending_packet_buffer[1]);
     pint extension_index = tc_cpe_get_extension_index(extension_name);
     if (extension_index < 0) {
-        tc_server_kick_session(session, "Invalid extension name: TeleClassic26 does not support this extension.");
+        tc_server_kick_session(session, "Invalid extension name: TeleClassic26 does not support this extension.", -1, FALSE);
         return;
     }
 
     pint32 extension_version = tc_protocol_decode_int(&session->pending_packet_buffer[1 + TC_PROTOCOL_MAX_STR_LEN]);
     if (extension_version < 1 || extension_version > 3) {
-        tc_server_kick_session(session, "Invalid extension version: TeleClassic26 only supports extensions 1-3.");
+        tc_server_kick_session(session, "Invalid extension version: TeleClassic26 only supports extensions 1-3.", -1, FALSE);
         return;
     }
 
@@ -94,19 +97,19 @@ static void handle_cpe_extentry(void* arg, tc_thread_pool_task_priority_t priori
         if (tc_session_get_extension_version(session, TC_CPE_CUSTOM_BLOCKS_EXTENSION_INDEX) >= 0) {
             // send the servers custom block support level
             if(!tc_cpe_send_custom_block_support_level(session->client_socket, TC_CPE_CUSTOM_BLOCKS_MAX_SUPPORT_LEVEL)) {
-                tc_server_kick_session(session, "Could not send custom block support level packet.");
+                tc_server_kick_session(session, "Could not send custom block support level packet.", -1, FALSE);
                 return;
             }
             return; //do not finalize the player identification yet
         }
-        finalize_player_identification(session, priority);
+        finalize_player_identification(session, priority, session_generation);
     } else {
         session->remaining_cpe_ext_packets--;
-        tc_server_protocol_handler_cleanup(session, tc_server_client_listen_task, priority);
+        tc_server_protocol_handler_cleanup(session, tc_server_client_listen_task, priority, session_generation);
     }
 }
 
-static void handle_cpe_custom_block_support_level(void* arg, tc_thread_pool_task_priority_t priority) {
+static void handle_cpe_custom_block_support_level(void* arg, tc_thread_pool_task_priority_t priority, pint session_generation) {
     tc_session_t* session = (tc_session_t*)arg;
     TC_ASSERT(session->supports_cpe, "Session does not support CPE.");
 
@@ -114,10 +117,10 @@ static void handle_cpe_custom_block_support_level(void* arg, tc_thread_pool_task
 
     TC_LOG_SESSION(log_info, session, "Received CPE custom block support level packet (support level: %d)", session->custom_block_support_level);
 
-    finalize_player_identification(session, priority);
+    finalize_player_identification(session, priority, session_generation);
 }
 
-static void finalize_player_identification(tc_session_t* session, tc_thread_pool_task_priority_t priority) {
+static void finalize_player_identification(tc_session_t* session, tc_thread_pool_task_priority_t priority, pint session_generation) {
     pboolean identify_success = tc_protocol_server_identification(
         session->client_socket, 
         session->server->heartbeat_manager.info.server_name, 
@@ -125,11 +128,11 @@ static void finalize_player_identification(tc_session_t* session, tc_thread_pool
         TC_PROTOCOL_USER_TYPE_STANDARD
     );
     if (!identify_success) {
-        tc_server_kick_session(session, "Could not send server identification packet.");
+        tc_server_kick_session(session, "Could not send server identification packet.", -1, FALSE);
         return;
     }
 
-    tc_server_protocol_handler_cleanup(session, NULL, priority);
+    tc_server_protocol_handler_cleanup(session, NULL, priority, session_generation);
 
     /*pboolean schedule_success = tc_thread_schedule_new(
         &session->server->thread_pool,
@@ -146,21 +149,21 @@ static void finalize_player_identification(tc_session_t* session, tc_thread_pool
     TC_LOG_SESSION(log_info, session, "Finished handshake successfully.");
 
     // join the default/lobby
-    tc_session_join(session, NULL);
+    tc_session_join(session, NULL, session_generation, FALSE);
 }
 
-static void handle_player_identification(void* arg, tc_thread_pool_task_priority_t priority) {
+static void handle_player_identification(void* arg, tc_thread_pool_task_priority_t priority, pint session_generation) {
     tc_session_t* session = (tc_session_t*)arg;
 
     if (session->authenticated_service) {
-        tc_server_kick_session(session, "Already Identified: Your client has a bug.");
+        tc_server_kick_session(session, "Already Identified: Your client has a bug.", -1, FALSE);
         return;
     }
 
     // validate the protocol version
     pchar protocol_version = session->pending_packet_buffer[0];
     if (protocol_version <= TC_PROTOCOL_VERSION) {
-        tc_server_kick_session(session, "Invalid Protocol Version: Please update your client.");
+        tc_server_kick_session(session, "Invalid Protocol Version: Please update your client.", -1, FALSE);
         return;
     }
 
@@ -177,7 +180,7 @@ static void handle_player_identification(void* arg, tc_thread_pool_task_priority
         key
     );
     if (!session->authenticated_service) {
-        tc_server_kick_session(session, "Could not validate your identity.");
+        tc_server_kick_session(session, "Could not validate your identity.", -1, FALSE);
         return;
     }
 
@@ -187,13 +190,13 @@ static void handle_player_identification(void* arg, tc_thread_pool_task_priority
 
     if (session->supports_cpe) {
         // schedule CPE negotiation
-        tc_server_protocol_handler_cleanup(session, handle_begin_cpe_negotiation, priority);
+        tc_server_protocol_handler_cleanup(session, handle_begin_cpe_negotiation, priority, session_generation);
     } else {
-        finalize_player_identification(session, priority);
+        finalize_player_identification(session, priority, session_generation);
     }
 }
 
-static void handle_player_set_block(void* arg, tc_thread_pool_task_priority_t priority) {
+static void handle_player_set_block(void* arg, tc_thread_pool_task_priority_t priority, pint session_generation) {
     tc_session_t* session = (tc_session_t*)arg;
 
     pint16 x = tc_protocol_decode_short(&session->pending_packet_buffer[0]);
@@ -209,20 +212,20 @@ static void handle_player_set_block(void* arg, tc_thread_pool_task_priority_t pr
     }
 
     if (session->current_joinable) {
-        if(!session->current_joinable->handle_set_block(session->current_joinable, session, x, y, z, mode, block)) {
-            tc_server_kick_session(session, "Failed to handle set block request.");
+        if(!session->current_joinable->handle_set_block(session->current_joinable, session, x, y, z, mode, block, priority, session_generation)) {
+            tc_server_kick_session(session, "Failed to handle set block request.", -1, FALSE);
             return;
         }
     } else {
         TC_LOG_SESSION(log_error, session, "Client sent an invalid set block packet");
-        tc_server_kick_session(session, "Client cannot currently set blocks.");
+        tc_server_kick_session(session, "Client cannot currently set blocks.", -1, FALSE);
         return;
     }
 
-    tc_server_protocol_handler_cleanup(session, tc_server_client_listen_task, priority);
+    tc_server_protocol_handler_cleanup(session, tc_server_client_listen_task, priority, session_generation);
 }
 
-static void handle_player_position_and_orientation_update(void* arg, tc_thread_pool_task_priority_t priority) {
+static void handle_player_position_and_orientation_update(void* arg, tc_thread_pool_task_priority_t priority, pint session_generation) {
     tc_session_t* session = (tc_session_t*)arg;
     
     psize offset = tc_session_get_extension_version(session, TC_CPE_CUSTOM_BLOCKS_EXTENSION_INDEX) >= 0 ? 2 : 1;
@@ -233,17 +236,17 @@ static void handle_player_position_and_orientation_update(void* arg, tc_thread_p
     pchar pitch = session->pending_packet_buffer[offset + 7];
 
     if (session->current_joinable) {
-        if(!session->current_joinable->handle_position_update(session->current_joinable, session, x, y, z, heading, pitch)) {
-            tc_server_kick_session(session, "Failed to handle position and orientation update request.");
+        if(!session->current_joinable->handle_position_update(session->current_joinable, session, x, y, z, heading, pitch, priority, session_generation)) {
+            tc_server_kick_session(session, "Failed to handle position and orientation update request.", -1, FALSE);
             return;
         }
     } else {
         TC_LOG_SESSION(log_error, session, "Client sent invalid position and orientation update packet");
-        tc_server_kick_session(session, "Client cannot currently update their position and orientation.");
+        tc_server_kick_session(session, "Client cannot currently update their position and orientation.", -1, FALSE);
         return;
     }
 
-    tc_server_protocol_handler_cleanup(session, tc_server_client_listen_task, priority);
+    tc_server_protocol_handler_cleanup(session, tc_server_client_listen_task, priority, session_generation);
 }
 
 static const psize tc_packet_data_sizes[TC_PACKET_HANDLERS_MAX_PACKETS] = {

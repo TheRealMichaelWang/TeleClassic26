@@ -135,7 +135,7 @@ static void* thread_pool_worker(void *arg) {
         p_mutex_unlock(pool->lock);
 
         // execute the task
-        task.func(task.arg, task.priority);
+        task.func(task.arg, task.priority, task.session_generation);
 
         p_mutex_lock(pool->lock);
         pool->active_threads--;
@@ -247,7 +247,8 @@ pboolean tc_thread_schedule_new(
     tc_thread_pool_t *pool,
     tc_thread_pool_task_t new_task,
     void *arg,
-    tc_thread_pool_task_priority_t priority
+    tc_thread_pool_task_priority_t priority,
+    pint session_generation
 ) {
     p_mutex_lock(pool->lock);
 
@@ -259,7 +260,8 @@ pboolean tc_thread_schedule_new(
     tc_thread_pool_context_t task = {
         .func = new_task,
         .arg = arg,
-        .priority = priority
+        .priority = priority,
+        .session_generation = session_generation
     };
 
     pboolean enqueue_success = task_buffer_enqueue(
@@ -285,14 +287,16 @@ void tc_thread_schedule_next(
     tc_thread_pool_task_t next_task,
     tc_thread_pool_task_t shutdown_task,
     void *arg,
-    tc_thread_pool_task_priority_t current_priority
+    tc_thread_pool_task_priority_t current_priority,
+    pint current_session_generation
 ) {
     p_mutex_lock(pool->lock);
 
     tc_thread_pool_context_t task = {
         .func = pool->shutdown ? shutdown_task : next_task, 
         .arg = arg, 
-        .priority = current_priority
+        .priority = current_priority,
+        .session_generation = current_session_generation
     };
 
     if (task.func == NULL) {

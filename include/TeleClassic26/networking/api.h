@@ -38,7 +38,8 @@ pboolean tc_api_schedule_send_map(
     tc_session_t* session,
     const pchar* file_name, 
     tc_map_t* pre_loaded_map,
-    tc_thread_pool_task_priority_t priority
+    tc_thread_pool_task_priority_t priority,
+    pint session_generation
 );
 
 #endif /* TELECLASSIC26_LEVEL_H */
