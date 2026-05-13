@@ -24,6 +24,8 @@ typedef struct tc_heartbeat_service {
     const pchar* hostname;
     pint port;
     pboolean use_https;
+    
+    pboolean dummy_service; //for debugging purposes, always authenticate to this service
 } tc_heartbeat_service_t;
 
 // Sends the server info to the heartbeat server

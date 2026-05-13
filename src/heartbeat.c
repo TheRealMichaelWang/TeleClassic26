@@ -165,6 +165,10 @@ tc_heartbeat_service_t* tc_heartbeat_manager_validate(
     }
 
     for (pint i = 0; i < manager->num_services; i++) {
+        if (manager->services[i].dummy_service) {
+            return &manager->services[i];
+        }
+
         PCryptoHash* md5 = p_crypto_hash_new(P_CRYPTO_HASH_TYPE_MD5);
         if (P_UNLIKELY(md5 == NULL)) {
             continue;
@@ -221,6 +225,10 @@ pboolean tc_heartbeat_send_info(
     const tc_heartbeat_info_t* info,
     const pchar salt[TC_HEARTBEAT_SALT_LENGTH]
 ) {
+    if (service->dummy_service) {
+        return TRUE;
+    }
+
     log_info("Sending heartbeat to %s:%d", service->hostname, service->port);
 
     CURL* curl = curl_easy_init();

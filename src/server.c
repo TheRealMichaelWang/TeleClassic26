@@ -47,6 +47,7 @@ pboolean tc_server_init(
         p_socket_address_free(server->address);
         return FALSE;
     }
+    log_info("Listener socket bound successfully to %s:%d", hostname, port);
 
     if (!tc_thread_pool_init(&server->thread_pool, "AABCAABCD", reserved_threads, max_blocking_threads)) {
         log_error("Failed to initialize thread pool");
@@ -256,9 +257,9 @@ void tc_server_client_listen_task(void *arg, tc_thread_pool_task_priority_t prio
     }
 
     PError *error = NULL;
-    if (session->pending_packet_opcode != -1) {
+    if (session->pending_packet_opcode == -1) {
         pchar opcode_buffer[1];
-        psize read_size = p_socket_receive(
+        pssize read_size = p_socket_receive(
             session->client_socket, 
             opcode_buffer, 
             1, 
@@ -303,7 +304,7 @@ void tc_server_client_listen_task(void *arg, tc_thread_pool_task_priority_t prio
         psize packet_buffer_size = tc_packet_data_size(session->pending_packet_opcode, session);
 
         PError *error = NULL;
-        psize read_size = p_socket_receive(
+        pssize read_size = p_socket_receive(
             session->client_socket, 
             (pchar*)&session->pending_packet_buffer[session->pending_packet_buffer_size], 
             packet_buffer_size - session->pending_packet_buffer_size, 
@@ -335,25 +336,24 @@ void tc_server_client_listen_task(void *arg, tc_thread_pool_task_priority_t prio
             return;
         }
     }
-    // if no data was read and the socket is not blocking, yeild
-    if (error && p_error_get_code(error) == P_ERROR_IO_WOULD_BLOCK) {
-        tc_thread_schedule_next(
-            &session->server->thread_pool,
-            tc_server_client_listen_task,
-            tc_server_shutdown_client_task,
-            session,
-            priority,
-            session_generation
-        );
+    // Reschedule on WOULD_BLOCK *or* on a successful partial read.
+    // Only kick on a real error.
+    if (error && p_error_get_code(error) != P_ERROR_IO_WOULD_BLOCK) {
+        tc_server_kick_session(session, "Error: Please reconnect.", -1, FALSE);
         tc_session_release_action_lock(session);
         p_error_free(error);
         return;
     }
-
-    // if an error occurred, kick the session
-    tc_server_kick_session(session, "Error: Please reconnect.", -1, FALSE);
+    tc_thread_schedule_next(
+        &session->server->thread_pool,
+        tc_server_client_listen_task,
+        tc_server_shutdown_client_task,
+        session,
+        priority,
+        session_generation
+    );
     tc_session_release_action_lock(session);
-    p_error_free(error);
+    if (error) p_error_free(error);
 }
 
 // handles a new session
@@ -468,6 +468,7 @@ pboolean tc_server_start(tc_server_t *server) {
     tc_heartbeat_manager_start(&server->heartbeat_manager);
 
     server->started = TRUE;
+    log_info("Server started succesfully.");
     return TRUE;
 }
 

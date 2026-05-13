@@ -86,7 +86,9 @@ static nbt_node *nbt_make_byte_array(const char *name, const void *data, int32_t
  * with the correct type, NULL if missing or type mismatch. */
 static nbt_node *nbt_expect(nbt_node *parent, const char *name, nbt_type type)
 {
-    nbt_node *n = nbt_find_by_name(parent, name);
+    nbt_node *n = (strchr(name, '.') != NULL)
+        ? nbt_find_by_path(parent, name)
+        : nbt_find_by_name(parent, name);
     if (n && n->type != type) { return NULL; }
     return n;
 }
@@ -186,9 +188,18 @@ pboolean tc_map_load(tc_map_t *map, const pchar *path)
     map->format_version = n->payload.tag_byte;
 
     n = nbt_expect(root, "ClassicWorld.Name", TAG_STRING);
-    if (!n) { goto fail; }
-    map->name = p_strdup(n->payload.tag_string);
-    if (!map->name) { goto fail; }
+    if (n) {
+        map->name = p_strdup(n->payload.tag_string);
+        if (!map->name) { goto fail; }
+    } else {
+        /* Optional: derive from filename stem if absent. */
+        const pchar *base = strrchr(path, '/');
+        base = base ? base + 1 : path;
+        map->name = p_strdup(base);
+        if (!map->name) { goto fail; }
+        pchar *ext = strrchr(map->name, '.');
+        if (ext) { *ext = '\0'; }
+    }
 
     n = nbt_expect(root, "ClassicWorld.UUID", TAG_BYTE_ARRAY);
     if (!n || n->payload.tag_byte_array.length != TC_THREADS_UUID_LEN) { goto fail; }
@@ -278,8 +289,7 @@ pboolean tc_map_load(tc_map_t *map, const pchar *path)
         map->custom_blocks_extension = cb;
 
         n = nbt_expect(ext, "ExtensionVersion", TAG_INT);
-        if (!n) { goto fail; }
-        cb->extension_version = n->payload.tag_int;
+        cb->extension_version = n ? n->payload.tag_int : 1;
 
         n = nbt_expect(ext, "SupportLevel", TAG_SHORT);
         if (!n) { goto fail; }
@@ -303,8 +313,7 @@ pboolean tc_map_load(tc_map_t *map, const pchar *path)
         map->env_colors_extension = ec;
 
         n = nbt_expect(ext, "ExtensionVersion", TAG_INT);
-        if (!n) { goto fail; }
-        ec->extension_version = n->payload.tag_int;
+        ec->extension_version = n ? n->payload.tag_int : 1;
 
         if (!load_color(ext, "Sky",      &ec->sky))      { goto fail; }
         if (!load_color(ext, "Cloud",    &ec->cloud))    { goto fail; }
@@ -324,8 +333,7 @@ pboolean tc_map_load(tc_map_t *map, const pchar *path)
         map->env_aspect_extension = ea;
 
         n = nbt_expect(ext, "ExtensionVersion", TAG_INT);
-        if (!n) { goto fail; }
-        ea->extension_version = n->payload.tag_int;
+        ea->extension_version = n ? n->payload.tag_int : 1;
 
         n = nbt_expect(ext, "SideBlock", TAG_BYTE);
         if (!n) { goto fail; }
@@ -375,8 +383,14 @@ pboolean tc_map_load(tc_map_t *map, const pchar *path)
         map->env_appearance_extension = ea;
 
         n = nbt_expect(ext, "ExtensionVersion", TAG_INT);
-        if (!n) { goto fail; }
-        ea->extension_version = n->payload.tag_int;
+        if (n) {
+            ea->extension_version = n->payload.tag_int;
+        } else {
+            /* Infer from presence of v2-only fields when ExtensionVersion is absent. */
+            pboolean has_v2_fields = nbt_find_by_name(ext, "CloudLevel") != NULL ||
+                                     nbt_find_by_name(ext, "MaximumViewDistance") != NULL;
+            ea->extension_version = has_v2_fields ? 2 : 1;
+        }
 
         n = nbt_expect(ext, "TextureURL", TAG_STRING);
         if (!n) { goto fail; }
@@ -420,8 +434,7 @@ pboolean tc_map_load(tc_map_t *map, const pchar *path)
         map->env_weather_extension = ew;
 
         n = nbt_expect(ext, "ExtensionVersion", TAG_INT);
-        if (!n) { goto fail; }
-        ew->extension_version = n->payload.tag_int;
+        ew->extension_version = n ? n->payload.tag_int : 1;
 
         n = nbt_expect(ext, "WeatherType", TAG_BYTE);
         if (!n) { goto fail; }
@@ -439,8 +452,7 @@ pboolean tc_map_load(tc_map_t *map, const pchar *path)
         map->block_definition_extensions = bd;
 
         n = nbt_expect(ext, "ExtensionVersion", TAG_INT);
-        if (!n) { goto fail; }
-        bd->extension_version = n->payload.tag_int;
+        bd->extension_version = n ? n->payload.tag_int : 1;
 
         struct list_head *pos;
         list_for_each(pos, &ext->payload.tag_compound->entry) {

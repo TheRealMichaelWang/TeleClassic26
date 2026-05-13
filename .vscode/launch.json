@@ -7,7 +7,7 @@
             "request": "launch",
             "program": "${workspaceFolder}/build/bin/TeleClassic26",
             "args": [],
-            "cwd": "${workspaceFolder}",
+            "cwd": "${workspaceFolder}/build/bin",
             "MIMode": "lldb",
             "preLaunchTask": "build (debug)"
         },
@@ -17,7 +17,7 @@
             "request": "launch",
             "program": "${workspaceFolder}/build/bin/TeleClassic26",
             "args": [],
-            "cwd": "${workspaceFolder}",
+            "cwd": "${workspaceFolder}/build/bin",
             "MIMode": "lldb"
         }
     ]

@@ -14,6 +14,7 @@ tc_heartbeat_service_t heartbeat_services[] = {
         .hostname = "www.classicube.net",
         .port = 443,
         .use_https = TRUE,
+        .dummy_service = TRUE,
     }
 };
 
@@ -33,8 +34,9 @@ tc_heartbeat_info_t heartbeat_info = {
 static void* test_attempt_join(void* this_context, tc_session_t* session, const pchar* world_name, pint session_generation) {
     pboolean success = tc_api_schedule_send_map(
         session,
-        "lobby.cw",
+        "./classic_worlds/test_lobby.cw",
         NULL,
+        this_context,
         TC_THREAD_POOL_TASK_PRIORITY_MEDIUM,
         session_generation
     );
@@ -65,6 +67,7 @@ static void test_handle_server_stop(void* this_context) {
 }
 
 static void test_handle_map_send_failure(void* this_context, tc_session_t* session, tc_thread_pool_task_priority_t current_priority, pint session_generation) {
+    tc_server_kick_session(session, "Failed to send map.", -1, FALSE);
     return;
 }
 
@@ -103,7 +106,7 @@ pboolean run_server(void) {
     int init_success = tc_server_init(
         server, 
         "0.0.0.0", 
-        8080, 128, 2, 2,
+        25565, 128, 2, 2,
         heartbeat_services, 
         sizeof(heartbeat_services) / sizeof(tc_heartbeat_service_t), 
         heartbeat_info,
@@ -123,7 +126,13 @@ pboolean run_server(void) {
         return FALSE;
     }
 
-    p_uthread_sleep(15000);
+    while (TRUE) {
+        char input[1024];
+        fgets(input, sizeof(input), stdin);
+        if (strcmp(input, "quit\n") == 0) {
+            break;
+        }
+    }
 
     tc_server_finalize(server);
     p_free(server);

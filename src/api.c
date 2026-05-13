@@ -9,7 +9,7 @@
 #include <plibsys.h>
 
 pboolean tc_api_send_message(tc_session_t* session, tc_message_type_t message_type, const pchar message[]) {
-    if (tc_session_get_extension_version(session, TC_CPE_MESSAGE_TYPES_EXTENSION_INDEX) >= 0) {
+    if (tc_session_get_extension_version(session, TC_CPE_MESSAGE_TYPES_EXTENSION_INDEX) > 0) {
         return tc_send_message(session->client_socket, (pchar)message_type, message);
     }
     return tc_send_message(session->client_socket, 0, message);
@@ -21,6 +21,7 @@ typedef struct tc_send_map_data {
     tc_thread_pool_task_priority_t priority;
 
     tc_map_t* map;
+    tc_joinable_interface_t* joinable;
     send_buffer_t block_array_buffer;
     send_buffer_t block_array2_buffer;
 } tc_send_map_data_t;
@@ -45,12 +46,12 @@ static void free_send_map_data(tc_send_map_data_t* send_map_data) {
     p_free(send_map_data);
 }
 
-static void handle_success(tc_send_map_data_t* send_map_data) {
-    send_map_data->session->current_joinable->handle_map_send_success(
-        send_map_data->session->current_joinable, 
+static void handle_success(tc_send_map_data_t* send_map_data, pint session_generation) {
+    send_map_data->joinable->handle_map_send_success(
+        send_map_data->joinable, 
         send_map_data->session,
         send_map_data->priority,
-        send_map_data->session->current_generation
+        session_generation
     );
 
     tc_session_release_action_lock(send_map_data->session);
@@ -58,25 +59,27 @@ static void handle_success(tc_send_map_data_t* send_map_data) {
     free_send_map_data(send_map_data);
 }
 
-static void handle_failure(tc_send_map_data_t* send_map_data, pboolean release_lock) {
+static void handle_failure(tc_send_map_data_t* send_map_data, pint session_generation, pboolean release_lock) {
     send_map_data->session->current_joinable->handle_map_send_failure(
-        send_map_data->session->current_joinable, 
+        send_map_data->joinable, 
         send_map_data->session, 
         send_map_data->priority, 
-        send_map_data->session->current_generation
+        session_generation
     );
 
     if (release_lock) {
         tc_session_release_action_lock(send_map_data->session);
     }
-    p_rwlock_reader_unlock(send_map_data->map->lock);
+    if (send_map_data->map) {
+        p_rwlock_reader_unlock(send_map_data->map->lock);
+    }
     free_send_map_data(send_map_data);
 }
 
 // task to schedule in case of failure for tc_send_buffer_task
 static void tc_send_buffer_handle_failure(void* arg, tc_thread_pool_task_priority_t priority, pint session_generation) {
     tc_send_buffer_task_data_t* send_buffer_task_data = (tc_send_buffer_task_data_t*)arg;
-    handle_failure(send_buffer_task_data->send_map_data, TRUE);
+    handle_failure(send_buffer_task_data->send_map_data, session_generation, TRUE);
     p_free(send_buffer_task_data);
     return;
 }
@@ -97,7 +100,7 @@ static void tc_send_buffer_task(void* arg, tc_thread_pool_task_priority_t priori
         memset(&current_chunk[chunk_length], 0, 1024 - chunk_length); //set the rest to all zeros
     }
 
-    pchar percent_complete = tc_session_get_extension_version(send_buffer_task_data->send_map_data->session, TC_CPE_EXTENDED_BLOCKS_EXTENSION_INDEX) >= 0 
+    pchar percent_complete = tc_session_get_extension_version(send_buffer_task_data->send_map_data->session, TC_CPE_EXTENDED_BLOCKS_EXTENSION_INDEX) > 0 
         ? (pchar)(!send_buffer_task_data->send_main_buffer) 
         : (pchar)((float)send_buffer_task_data->sent_count * 100.0f / (float)selected_buffer->size);
     int send_result = tc_send_level_data_chunk(
@@ -115,7 +118,7 @@ static void tc_send_buffer_task(void* arg, tc_thread_pool_task_priority_t priori
             send_buffer_task_data->sent_count + chunk_length,
             selected_buffer->size
         );
-        handle_failure(send_buffer_task_data->send_map_data, TRUE);
+        handle_failure(send_buffer_task_data->send_map_data, session_generation, TRUE);
         p_free(send_buffer_task_data);
         return;
     }
@@ -134,12 +137,12 @@ static void tc_send_buffer_task(void* arg, tc_thread_pool_task_priority_t priori
             );
             if (!send_result) {
                 TC_LOG_SESSION(log_error, send_buffer_task_data->send_map_data->session, "Failed to send map %s: Could not send level finalize packet.", send_buffer_task_data->send_map_data->file_name);
-                handle_failure(send_buffer_task_data->send_map_data, TRUE);
+                handle_failure(send_buffer_task_data->send_map_data, session_generation, TRUE);
                 p_free(send_buffer_task_data);
                 return;
             }
             //world has been transmitted successfully
-            handle_success(send_buffer_task_data->send_map_data);
+            handle_success(send_buffer_task_data->send_map_data, session_generation);
 
             p_free(send_buffer_task_data);
             return;
@@ -168,12 +171,12 @@ static void tc_send_map_task2(void* arg, tc_thread_pool_task_priority_t priority
     #define HANDLE_FAILURE(ACTION, FAILURE_MESSAGE) { \
         if (!ACTION) { \
             TC_LOG_SESSION(log_error, send_map_data->session, "Failed to send map %s: " FAILURE_MESSAGE ".", send_map_data->file_name); \
-            handle_failure(send_map_data, TRUE); \
+            handle_failure(send_map_data, session_generation, TRUE); \
             return; \
         } \
     }
 
-    if (tc_session_get_extension_version(send_map_data->session, TC_CPE_FASTMAP_EXTENSION_INDEX) >= 0) {
+    if (tc_session_get_extension_version(send_map_data->session, TC_CPE_FASTMAP_EXTENSION_INDEX) > 0) {
         TC_ASSERT(send_map_data->block_array_buffer.size <= INT32_MAX, "Block array size must be less than or equal to INT32_MAX.");
         HANDLE_FAILURE(tc_send_level_initialize2(
             send_map_data->session->client_socket, 
@@ -184,9 +187,9 @@ static void tc_send_map_task2(void* arg, tc_thread_pool_task_priority_t priority
     }
 
     if (send_map_data->map->env_aspect_extension) {
-        if (tc_session_get_extension_version(send_map_data->session, TC_CPE_ENV_MAP_APPEARANCE_EXTENSION_INDEX) < 0) {
+        if (tc_session_get_extension_version(send_map_data->session, TC_CPE_ENV_MAP_APPEARANCE_EXTENSION_INDEX) <= 0) {
             TC_LOG_SESSION(log_error, send_map_data->session, "Failed to send map (name %s): EnvMapAppearance extension is not supported but required.", send_map_data->map->name);
-            handle_failure(send_map_data, TRUE);
+            handle_failure(send_map_data, session_generation, TRUE);
             return;
         }
 
@@ -251,9 +254,9 @@ static void tc_send_map_task2(void* arg, tc_thread_pool_task_priority_t priority
     } else if (send_map_data->map->env_appearance_extension) {
         pint client_supported_version = tc_session_get_extension_version(send_map_data->session, TC_CPE_ENV_MAP_APPEARANCE_EXTENSION_INDEX);
         if (send_map_data->map->env_appearance_extension->extension_version > client_supported_version) {
-            if (tc_session_get_extension_version(send_map_data->session, TC_CPE_ENV_MAP_ASPECT_EXTENSION_INDEX) < 0) {
+            if (tc_session_get_extension_version(send_map_data->session, TC_CPE_ENV_MAP_ASPECT_EXTENSION_INDEX) <= 0) {
                 TC_LOG_SESSION(log_error, send_map_data->session, "Failed to send map (name %s): EnvMapAppearance extension is not supported but required.", send_map_data->map->name);
-                handle_failure(send_map_data, TRUE);
+                handle_failure(send_map_data, session_generation, TRUE);
                 return;
             }
 
@@ -318,9 +321,9 @@ static void tc_send_map_task2(void* arg, tc_thread_pool_task_priority_t priority
     }
 
     if (send_map_data->map->env_weather_extension) {
-        if (tc_session_get_extension_version(send_map_data->session, TC_CPE_ENV_MAP_WEATHER_TYPE_EXTENSION_INDEX) < 0) {
+        if (tc_session_get_extension_version(send_map_data->session, TC_CPE_ENV_MAP_WEATHER_TYPE_EXTENSION_INDEX) <= 0) {
             TC_LOG_SESSION(log_error, send_map_data->session, "Failed to send map (name %s): EnvMapWeatherType extension is not supported but required.", send_map_data->map->name);
-            handle_failure(send_map_data, TRUE);
+            handle_failure(send_map_data, session_generation, TRUE);
             return;
         }
 
@@ -331,9 +334,9 @@ static void tc_send_map_task2(void* arg, tc_thread_pool_task_priority_t priority
     }
 
     if (send_map_data->map->env_colors_extension) {
-        if (tc_session_get_extension_version(send_map_data->session, TC_CPE_ENV_MAP_COLORS_EXTENSION_INDEX) < 0) {
+        if (tc_session_get_extension_version(send_map_data->session, TC_CPE_ENV_MAP_COLORS_EXTENSION_INDEX) <= 0) {
             TC_LOG_SESSION(log_error, send_map_data->session, "Failed to send map (name %s): EnvMapColors extension is not supported but required.", send_map_data->map->name);
-            handle_failure(send_map_data, TRUE);
+            handle_failure(send_map_data, session_generation, TRUE);
             return;
         }
      
@@ -381,7 +384,7 @@ static void tc_send_map_task2(void* arg, tc_thread_pool_task_priority_t priority
     tc_send_buffer_task_data_t* send_buffer_task_data = p_malloc0(sizeof(tc_send_buffer_task_data_t));
     if (!send_buffer_task_data) {
         TC_LOG_SESSION(log_error, send_map_data->session, "Failed to send map (name %s): Out of memory.", send_map_data->map->name);
-        handle_failure(send_map_data, TRUE);
+        handle_failure(send_map_data, session_generation, TRUE);
         return;
     }
 
@@ -408,14 +411,15 @@ static void tc_send_map_task1(void* arg, tc_thread_pool_task_priority_t priority
         tc_map_t* map = tc_map_cache_open(&send_map_data->session->server->map_cache, send_map_data->file_name);
         if (!map) {
             TC_LOG_SESSION(log_error, send_map_data->session, "Failed to send map %s: Could not load map.", send_map_data->file_name);
-            handle_failure(send_map_data, FALSE);
+            handle_failure(send_map_data, session_generation, FALSE);
             return;
         }
         send_map_data->map = map;
     }
     
     pboolean result;
-    if (tc_session_get_extension_version(send_map_data->session, TC_CPE_FASTMAP_EXTENSION_INDEX) >= 0) {
+    p_rwlock_reader_lock(send_map_data->map->lock);
+    if (tc_session_get_extension_version(send_map_data->session, TC_CPE_FASTMAP_EXTENSION_INDEX) > 0) {
         result = tc_deflate_byte_array(
             (puint8*)send_map_data->map->block_array,
             send_map_data->map->block_array_count,
@@ -430,18 +434,18 @@ static void tc_send_map_task1(void* arg, tc_thread_pool_task_priority_t priority
     }
     if (!result) {
         TC_LOG_SESSION(log_error, send_map_data->session, "Failed to send map (name %s): Could not compress block array.", send_map_data->map->name);
-        handle_failure(send_map_data, FALSE);
+        handle_failure(send_map_data, session_generation, FALSE);
         return;
     }
 
     if (send_map_data->map->block_array2) {
-        if (tc_session_get_extension_version(send_map_data->session, TC_CPE_EXTENDED_BLOCKS_EXTENSION_INDEX) < 0) {
+        if (tc_session_get_extension_version(send_map_data->session, TC_CPE_EXTENDED_BLOCKS_EXTENSION_INDEX) <= 0) {
             TC_LOG_SESSION(log_error, send_map_data->session, "Failed to send map (name %s): ExtendedBlocks extension is not supported but required.", send_map_data->map->name);
-            handle_failure(send_map_data, FALSE);
+            handle_failure(send_map_data, session_generation, FALSE);
             return;
         }
 
-        if (tc_session_get_extension_version(send_map_data->session, TC_CPE_FASTMAP_EXTENSION_INDEX) >= 0) {
+        if (tc_session_get_extension_version(send_map_data->session, TC_CPE_FASTMAP_EXTENSION_INDEX) > 0) {
             result = tc_deflate_byte_array(
                 (puint8*)send_map_data->map->block_array2,
                 send_map_data->map->block_array2_count,
@@ -456,7 +460,7 @@ static void tc_send_map_task1(void* arg, tc_thread_pool_task_priority_t priority
         }
         if (!result) {
             TC_LOG_SESSION(log_error, send_map_data->session, "Failed to send map (name %s): Could not compress block array2.", send_map_data->map->name);
-            handle_failure(send_map_data, FALSE);
+            handle_failure(send_map_data, session_generation, FALSE);
             return;
         }
     }
@@ -470,7 +474,7 @@ static void tc_send_map_task1(void* arg, tc_thread_pool_task_priority_t priority
     );
     if (!result) {
         TC_LOG_SESSION(log_error, send_map_data->session, "Failed to send map (name %s): Could not schedule task 2.", send_map_data->map->name);
-        handle_failure(send_map_data, FALSE);
+        handle_failure(send_map_data, session_generation, FALSE);
         return;
     }
 
@@ -481,11 +485,12 @@ pboolean tc_api_schedule_send_map(
     tc_session_t* session,
     const pchar* file_name, 
     tc_map_t* pre_loaded_map,
+    tc_joinable_interface_t* joinable,
     tc_thread_pool_task_priority_t priority,
     pint session_generation
 ) {
     TC_ASSERT(
-        session->current_joinable && session->current_joinable->handle_map_send_failure && session->current_joinable->handle_map_send_success, 
+        joinable && joinable->handle_map_send_failure && joinable->handle_map_send_success, 
         "Current joinable must have a map send failure and success handler."
     );
 
@@ -501,11 +506,11 @@ pboolean tc_api_schedule_send_map(
     send_map_data->file_name = file_name;
     send_map_data->priority = priority;
     send_map_data->map = pre_loaded_map;
+    send_map_data->joinable = joinable;
     if (pre_loaded_map) {
         tc_map_cache_ref(&session->server->map_cache, pre_loaded_map);
     }
 
-    p_rwlock_reader_lock(send_map_data->map->lock);
     int schedule_success = tc_thread_schedule_new(
         &session->server->thread_pool,
         tc_send_map_task1,
