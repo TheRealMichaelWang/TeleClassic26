@@ -312,6 +312,12 @@ pboolean tc_protocol_update_player_heading_and_pitch(
     pchar heading, pchar pitch
 );
 
+// despawns a player
+// - session: the session to send the packet to
+// - player_id: the id of the player to send the packet to
+// - return: TRUE if the packet was sent, FALSE otherwise
+pboolean tc_protocol_despawn_player(PSocket* session, pint8 player_id);
+
 // Gets the index of a supported extension by name
 // - extension_name: the name of the extension to get the index of
 // - return: the index of the extension, -1 if not found

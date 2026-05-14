@@ -532,6 +532,16 @@ pboolean tc_protocol_update_player_heading_and_pitch(PSocket* session, pint8 pla
     return TRUE;
 }
 
+pboolean tc_protocol_despawn_player(PSocket* session, pint8 player_id) {
+    if (!tc_protocol_send_byte(session, 0x0c)) {
+        return FALSE;
+    }
+    if (!tc_protocol_send_byte(session, (pchar)player_id)) {
+        return FALSE;
+    }
+    return TRUE;
+}
+
 pint tc_cpe_get_extension_index(const pchar extension_name[TC_PROTOCOL_MAX_STR_LEN]) {
     for (pint i = 0; i < TC_CPE_EXTENSION_MAX_SUPPORTED; i++) {
         if (strncmp(extension_name, tc_supported_extensions[i].name, TC_PROTOCOL_MAX_STR_LEN) == 0) {
