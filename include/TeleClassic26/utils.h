@@ -8,14 +8,16 @@
 #define TC_THREADS_UUID_LEN 16
 
 #define TC_ASSERT(condition, MSG) assert(condition)
-#define TC_LOG_SESSION(log_macro, session, FORMAT_STR, ...)                  \
-    log_macro(                                                               \
-        FORMAT_STR " (session: %.*s@%s)", ##__VA_ARGS__,                     \
-        TC_PROTOCOL_MAX_STR_LEN,                                             \
-        (session)->username,                                                 \
-        (session)->authenticated_service                                     \
-            ? (session)->authenticated_service->hostname                     \
-            : "N/A"                                                          \
+#define TC_LOG_SESSION(log_macro, session, FORMAT_STR, ...)                     \
+    log_macro(                                                                  \
+        FORMAT_STR " (session: %.*s@%s)", ##__VA_ARGS__,                        \
+        TC_PROTOCOL_MAX_STR_LEN,                                                \
+        ((session)->authenticated_service                                       \
+            ? (session)->username                                               \
+            : "N/A"),                                                           \
+        ((session)->authenticated_service                                       \
+            ? (session)->authenticated_service->hostname                        \
+            : "N/A")                                                            \
     )
 
 #define TC_MIN(a, b) ((a) < (b) ? (a) : (b))

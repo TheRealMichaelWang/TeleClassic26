@@ -166,6 +166,7 @@ tc_heartbeat_service_t* tc_heartbeat_manager_validate(
 
     for (pint i = 0; i < manager->num_services; i++) {
         if (manager->services[i].dummy_service) {
+            p_mutex_unlock(manager->lock);
             return &manager->services[i];
         }
 

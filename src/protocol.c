@@ -14,8 +14,8 @@ const tc_cpe_extension_t tc_supported_extensions[TC_CPE_EXTENSION_MAX_SUPPORTED]
     [TC_CPE_MESSAGE_TYPES_EXTENSION_INDEX] = { .name = "MessageTypes", .version = 1 },
     [TC_CPE_FASTMAP_EXTENSION_INDEX] = { .name = "FastMap", .version = 1 },
     [TC_CPE_ENV_MAP_APPEARANCE_EXTENSION_INDEX] = { .name = "EnvMapAppearance", .version = 2 },
-    [TC_CPE_ENV_MAP_WEATHER_TYPE_EXTENSION_INDEX] = { .name = "EnvMapWeatherType", .version = 1 },
-    [TC_CPE_ENV_MAP_COLORS_EXTENSION_INDEX] = { .name = "EnvMapColors", .version = 1 },
+    [TC_CPE_ENV_MAP_WEATHER_TYPE_EXTENSION_INDEX] = { .name = "EnvWeatherType", .version = 1 },
+    [TC_CPE_ENV_MAP_COLORS_EXTENSION_INDEX] = { .name = "EnvColors", .version = 1 },
     [TC_CPE_ENV_MAP_ASPECT_EXTENSION_INDEX] = { .name = "EnvMapAspect", .version = 1 },
 };
 
@@ -63,19 +63,33 @@ pboolean tc_protocol_send_short(PSocket* socket, const pint16 data) {
 }
 
 pboolean tc_protocol_send_int(PSocket* socket, const pint32 data) {
-    for (pint i = 0; i < sizeof(uint32_t); i++) {
-        pchar byte = (data >> (i * 8)) & 0xFF;
-        if (!tc_protocol_send_byte(socket, byte)) {
-            return FALSE;
-        }
+    pchar ha = data >> 24;
+    pchar hb = (data >> 16) & 0xFF;
+    pchar la = (data >> 8) & 0xFF;
+    pchar lb = data & 0xFF;
+
+    if (!tc_protocol_send_byte(socket, ha)) {
+        return FALSE;
     }
+    if (!tc_protocol_send_byte(socket, hb)) {
+        return FALSE;
+    }
+    if (!tc_protocol_send_byte(socket, la)) {
+        return FALSE;
+    }
+    if (!tc_protocol_send_byte(socket, lb)) {
+        return FALSE;
+    }
+
     return TRUE;
 }
 
+// short is big endian 16 bit integer
 pint16 tc_protocol_decode_short(pchar* packet_buffer) {
     return (packet_buffer[0] << 8) | packet_buffer[1];
 }
 
+// int is big endian 32 bit integer
 pint32 tc_protocol_decode_int(pchar* packet_buffer) {
     return (packet_buffer[0] << 24) | (packet_buffer[1] << 16) | (packet_buffer[2] << 8) | packet_buffer[3];
 }
@@ -84,7 +98,7 @@ pboolean tc_protocol_send_string(PSocket* socket, const pchar str[]) {
     pchar buffer[TC_PROTOCOL_MAX_STR_LEN];
 
     const pchar* current = &str[0];
-    while (*current != '\0') {
+    while (*current != '\0' && current - str < TC_PROTOCOL_MAX_STR_LEN) {
         buffer[current - str] = *current;
         current++;
     }

@@ -62,10 +62,10 @@ static void handle_cpe_extinfo(void* arg, tc_thread_pool_task_priority_t priorit
 
     // copy the appname from the packet buffer
     pchar appname[TC_PROTOCOL_MAX_STR_LEN];
-    tc_protocol_decode_string(appname, &session->pending_packet_buffer[1]);
+    tc_protocol_decode_string(appname, &session->pending_packet_buffer[0]);
 
     // read extension count
-    pint16 extension_count = tc_protocol_decode_short(&session->pending_packet_buffer[1 + TC_PROTOCOL_MAX_STR_LEN]);
+    pint16 extension_count = tc_protocol_decode_short(&session->pending_packet_buffer[TC_PROTOCOL_MAX_STR_LEN]);
     session->remaining_cpe_ext_packets = extension_count;
 
     TC_LOG_SESSION(log_info, session, "Received CPE extinfo packet (app: %.*s, extension count: %d)", TC_PROTOCOL_MAX_STR_LEN, appname, extension_count);
@@ -89,27 +89,31 @@ static void handle_cpe_extentry(void* arg, tc_thread_pool_task_priority_t priori
     }
 
     pchar extension_name[TC_PROTOCOL_MAX_STR_LEN];
-    tc_protocol_decode_string(extension_name, &session->pending_packet_buffer[1]);
+    tc_protocol_decode_string(extension_name, &session->pending_packet_buffer[0]);
     pint extension_index = tc_cpe_get_extension_index(extension_name);
-    if (extension_index < 0) {
-        tc_server_kick_session(session, "Invalid extension name: TeleClassic26 does not support this extension.", -1, FALSE);
+    if (extension_index < 0) { //ignore extraneous extension packets
+        session->remaining_cpe_ext_packets--;
+        tc_server_protocol_handler_cleanup(session, tc_server_client_listen_task, priority, session_generation);
         tc_session_release_action_lock(session);
         return;
     }
 
-    pint32 extension_version = tc_protocol_decode_int(&session->pending_packet_buffer[1 + TC_PROTOCOL_MAX_STR_LEN]);
+    pint32 client_extension_version = tc_protocol_decode_int(&session->pending_packet_buffer[TC_PROTOCOL_MAX_STR_LEN]);
+    pint32 extension_version = TC_MIN(client_extension_version, tc_supported_extensions[extension_index].version);
     if (extension_version < 1 || extension_version > 3) {
+        session->remaining_cpe_ext_packets--;
         tc_server_kick_session(session, "Invalid extension version: TeleClassic26 only supports extensions 1-3.", -1, FALSE);
         tc_session_release_action_lock(session);
         return;
     }
 
     // log information
-    TC_LOG_SESSION(log_info, session, "Received CPE extentry packet (extension: %.*s, version: %d)", TC_PROTOCOL_MAX_STR_LEN, extension_name, extension_version);
+    TC_LOG_SESSION(log_info, session, "Declared support for CPE extension: %.*s (version: %d)", TC_PROTOCOL_MAX_STR_LEN, extension_name, extension_version);
 
     // set the extension version in the ext_cpe_versions array
     session->ext_cpe_versions[extension_index / 4] |= ((extension_version & 0x3) << (extension_index % 4 * 2));
 
+    session->remaining_cpe_ext_packets--;
     if (session->remaining_cpe_ext_packets == 0) {
         // check if custom blocks extension is supported
         if (tc_session_get_extension_version(session, TC_CPE_CUSTOM_BLOCKS_EXTENSION_INDEX) > 0) {
@@ -117,12 +121,12 @@ static void handle_cpe_extentry(void* arg, tc_thread_pool_task_priority_t priori
             if(!tc_cpe_send_custom_block_support_level(session->client_socket, TC_CPE_CUSTOM_BLOCKS_MAX_SUPPORT_LEVEL)) {
                 tc_server_kick_session(session, "Could not send custom block support level packet.", -1, FALSE);
             }
+            tc_server_protocol_handler_cleanup(session, tc_server_client_listen_task, priority, session_generation);
             tc_session_release_action_lock(session);
             return; //do not finalize the player identification yet
         }
         finalize_player_identification(session, priority, session_generation);
     } else {
-        session->remaining_cpe_ext_packets--;
         tc_server_protocol_handler_cleanup(session, tc_server_client_listen_task, priority, session_generation);
     }
     tc_session_release_action_lock(session);
@@ -136,7 +140,7 @@ static void handle_cpe_custom_block_support_level(void* arg, tc_thread_pool_task
     
     TC_ASSERT(session->supports_cpe, "Session does not support CPE.");
 
-    session->custom_block_support_level = session->pending_packet_buffer[1];
+    session->custom_block_support_level = session->pending_packet_buffer[0];
 
     TC_LOG_SESSION(log_info, session, "Received CPE custom block support level packet (support level: %d)", session->custom_block_support_level);
 

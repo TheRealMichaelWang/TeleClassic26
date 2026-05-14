@@ -135,6 +135,9 @@ void tc_server_finalize(tc_server_t *server) {
     if (server->started) {
         tc_server_stop(server);
     }
+    // drain ALL workers in thread pool and heartbeat manager first!!!
+    tc_thread_pool_finalize(&server->thread_pool);
+    tc_heartbeat_manager_finalize(&server->heartbeat_manager);
 
     if (server->started) {
         p_socket_close(server->listener_socket, NULL);
@@ -143,8 +146,6 @@ void tc_server_finalize(tc_server_t *server) {
     p_socket_free(server->listener_socket);
     p_mutex_free(server->lock);
 
-    tc_thread_pool_finalize(&server->thread_pool);
-    tc_heartbeat_manager_finalize(&server->heartbeat_manager);
     tc_join_router_finalize(&server->join_router);
     tc_map_cache_finalize(&server->map_cache);
 
@@ -249,6 +250,8 @@ void tc_server_client_listen_task(void *arg, tc_thread_pool_task_priority_t prio
 
     if (p_time_profiler_elapsed_usecs(session->ping_profiler) > TC_SERVER_PING_INTERVAL) {
         if (!tc_protocol_ping(session->client_socket)) {
+            TC_LOG_SESSION(log_info, session, "Client ping timed out, kicking session.");
+            
             disconnect_session(session, session_generation);
             tc_session_release_action_lock(session);
             return;
