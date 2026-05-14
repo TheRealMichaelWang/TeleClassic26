@@ -197,24 +197,24 @@ pboolean tc_cpe_send_set_env_color(PSocket* session, pchar color_field, pint16 r
 // - player_id: the id of the player (always 0 unless CPE MessageTypes extension is supported)
 // - message: the message to send (must be less or equal to 64 characters)
 // - return: TRUE if the message was sent, FALSE otherwise
-pboolean tc_send_message(PSocket* session, pint8 player_id, const pchar message[]);
+pboolean tc_protocol_send_message(PSocket* session, pint8 player_id, const pchar message[]);
 
 // sends a level initialize packet
 // - session: the session to send the packet to
 // - return: TRUE if the packet was sent, FALSE otherwise
-pboolean tc_send_level_initialize(PSocket* session);
+pboolean tc_protocol_send_level_initialize(PSocket* session);
 
 // sends a level initialize packet (use this with FastMap CPE enabled)
 // - session: the session to send the packet to
 // - block_count: the number of blocks to send the packet to
 // - return: TRUE if the packet was sent, FALSE otherwise
-pboolean tc_send_level_initialize2(PSocket* session, pint32 block_count);
+pboolean tc_protocol_send_level_initialize2(PSocket* session, pint32 block_count);
 
 // sends a level data chunk packet
 // - session: the session to send the packet to
 // - data: the data to send the packet to
 // - return: TRUE if the packet was sent, FALSE otherwise
-pboolean tc_send_level_data_chunk(PSocket* session, puint16 chunk_length, const pchar chunk_data[1024], pchar percent_complete);
+pboolean tc_protocol_send_level_data_chunk(PSocket* session, puint16 chunk_length, const pchar chunk_data[1024], pchar percent_complete);
 
 // sends a level finalize packet
 // - session: the session to send the packet to
@@ -222,7 +222,77 @@ pboolean tc_send_level_data_chunk(PSocket* session, puint16 chunk_length, const 
 // - y size: the size of the y chunk to send the packet to
 // - z size: the size of the z chunk to send the packet to
 // - return: TRUE if the packet was sent, FALSE otherwise
-pboolean tc_send_level_finalize(PSocket* session, pint16 x_size, pint16 y_size, pint16 z_size);
+pboolean tc_protocol_send_level_finalize(PSocket* session, pint16 x_size, pint16 y_size, pint16 z_size);
+
+// sends a set block packet
+// - session: the session to send the packet to
+// - x: the x position of the block to send the packet to (short)
+// - y: the y position of the block to send the packet to (short)
+// - z: the z position of the block to send the packet to (short)
+// - block: the block to send the packet to (byte)
+// - return: TRUE if the packet was sent, FALSE otherwise
+pboolean tc_protocol_send_set_block(PSocket* session, pint16 x, pint16 y, pint16 z, pchar block);
+
+// sends a set block packet
+// - session: the session to send the packet to
+// - x: the x position of the block to send the packet to (short)
+// - y: the y position of the block to send the packet to (short)
+// - z: the z position of the block to send the packet to (short)
+// - block: the block to send the packet to (short)
+// - return: TRUE if the packet was sent, FALSE otherwise
+// NOTE: this is used when the ExtendedBlocks CPE extension is supported
+pboolean tc_protocol_send_set_block2(PSocket* session, pint16 x, pint16 y, pint16 z, puint16 block);
+
+// sends a spawn player packet
+// - session: the session to send the packet to
+// - player_id: the id of the player to send the packet to
+// - player_name: the name of the player to send the packet to
+// - x: the x position of the player to send the packet to (fshort)
+// - y: the y position of the player to send the packet to (fshort)
+// - z: the z position of the player to send the packet to (fshort)
+// - heading: the heading of the player to send the packet to (byte)
+// - pitch: the pitch of the player to send the packet to (byte)
+// - return: TRUE if the packet was sent, FALSE otherwise
+pboolean tc_protocol_send_spawn_player(PSocket* session, pint8 player_id, const pchar player_name[], pint16 x, pint16 y, pint16 z, pchar heading, pchar pitch);
+
+// sends a set player position and orientation packet
+// - session: the session to send the packet to
+// - player_id: the id of the player to send the packet to
+// - x: the x position of the player to send the packet to (fshort)
+// - y: the y position of the player to send the packet to (fshort)
+// - z: the z position of the player to send the packet to (fshort)
+// - heading: the heading of the player to send the packet to (byte)
+// - pitch: the pitch of the player to send the packet to (byte)
+// - return: TRUE if the packet was sent, FALSE otherwise
+pboolean tc_protocol_send_set_player_position_and_orientation(PSocket* session, pint8 player_id, pint16 x, pint16 y, pint16 z, pchar heading, pchar pitch);
+
+// updates the position and orientation of a player
+// - session: the session to send the packet to
+// - player_id: the id of the player to send the packet to
+// - delta_x: the delta x position of the player to send the packet to (fshort)
+// - delta_y: the delta y position of the player to send the packet to (fshort)
+// - delta_z: the delta z position of the player to send the packet to (fshort)
+// - heading: the heading of the player to send the packet to (byte)
+// - pitch: the pitch of the player to send the packet to (byte)
+// - return: TRUE if the packet was sent, FALSE otherwise
+pboolean tc_protocol_send_update_player_position_and_orientation_delta(PSocket* session, pint8 player_id, pint16 delta_x, pint16 delta_y, pint16 delta_z, pchar heading, pchar pitch);
+
+// updates the position of a player
+// - session: the session to send the packet to
+// - player_id: the id of the player to send the packet to
+// - delta_x: the delta x position of the player to send the packet to (fshort)
+// - delta_y: the delta y position of the player to send the packet to (fshort)
+// - delta_z: the delta z position of the player to send the packet to (fshort)
+// - return: TRUE if the packet was sent, FALSE otherwise
+pboolean tc_protocol_update_player_position_delta(PSocket* session, pint8 player_id, pint16 delta_x, pint16 delta_y, pint16 delta_z);
+
+// updates the heading and pitch of a player
+// - session: the session to send the packet to
+// - player_id: the id of the player to send the packet to
+// - delta_heading: the delta heading of the player to send the packet to (byte)
+// - delta_pitch: the delta pitch of the player to send the packet to (byte)
+// - return: TRUE if the packet was sent, FALSE otherwise
+pboolean tc_protocol_update_player_heading_and_pitch(PSocket* session, pint8 player_id, pchar heading, pchar pitch);
 
 // Gets the index of a supported extension by name
 // - extension_name: the name of the extension to get the index of

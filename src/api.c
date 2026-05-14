@@ -10,9 +10,9 @@
 
 pboolean tc_api_send_message(tc_session_t* session, tc_message_type_t message_type, const pchar message[]) {
     if (tc_session_get_extension_version(session, TC_CPE_MESSAGE_TYPES_EXTENSION_INDEX) > 0) {
-        return tc_send_message(session->client_socket, (pchar)message_type, message);
+        return tc_protocol_send_message(session->client_socket, (pchar)message_type, message);
     }
-    return tc_send_message(session->client_socket, 0, message);
+    return tc_protocol_send_message(session->client_socket, 0, message);
 }
 
 typedef struct tc_send_map_data {
@@ -103,7 +103,7 @@ static void tc_send_buffer_task(void* arg, tc_thread_pool_task_priority_t priori
     pchar percent_complete = tc_session_get_extension_version(send_buffer_task_data->send_map_data->session, TC_CPE_EXTENDED_BLOCKS_EXTENSION_INDEX) > 0 
         ? (pchar)(!send_buffer_task_data->send_main_buffer) 
         : (pchar)((float)send_buffer_task_data->sent_count * 100.0f / (float)selected_buffer->size);
-    int send_result = tc_send_level_data_chunk(
+    int send_result = tc_protocol_send_level_data_chunk(
         send_buffer_task_data->send_map_data->session->client_socket, 
         chunk_length, 
         current_chunk, 
@@ -129,7 +129,7 @@ static void tc_send_buffer_task(void* arg, tc_thread_pool_task_priority_t priori
             send_buffer_task_data->send_main_buffer = FALSE;
             send_buffer_task_data->sent_count = 0;
         } else {
-            int send_result = tc_send_level_finalize(
+            int send_result = tc_protocol_send_level_finalize(
                 send_buffer_task_data->send_map_data->session->client_socket, 
                 send_buffer_task_data->send_map_data->map->x_size, 
                 send_buffer_task_data->send_map_data->map->y_size, 
@@ -178,12 +178,12 @@ static void tc_send_map_task2(void* arg, tc_thread_pool_task_priority_t priority
 
     if (tc_session_get_extension_version(send_map_data->session, TC_CPE_FASTMAP_EXTENSION_INDEX) > 0) {
         TC_ASSERT(send_map_data->block_array_buffer.size <= INT32_MAX, "Block array size must be less than or equal to INT32_MAX.");
-        HANDLE_FAILURE(tc_send_level_initialize2(
+        HANDLE_FAILURE(tc_protocol_send_level_initialize2(
             send_map_data->session->client_socket, 
             send_map_data->map->block_array_count
         ), "Could not send level initialize packet.");
     } else {
-        HANDLE_FAILURE(tc_send_level_initialize(send_map_data->session->client_socket), "Could not send level initialize packet.");
+        HANDLE_FAILURE(tc_protocol_send_level_initialize(send_map_data->session->client_socket), "Could not send level initialize packet.");
     }
 
     if (send_map_data->map->env_aspect_extension) {

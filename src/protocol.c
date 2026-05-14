@@ -313,7 +313,7 @@ pboolean tc_cpe_send_set_env_color(PSocket* session, pchar color_field, pint16 r
     return TRUE;
 }
 
-pboolean tc_send_message(PSocket* session, pint8 player_id, const pchar message[]) {
+pboolean tc_protocol_send_message(PSocket* session, pint8 player_id, const pchar message[]) {
     if (!tc_protocol_send_byte(session, 0x0d)) {
         return FALSE;
     }
@@ -326,14 +326,14 @@ pboolean tc_send_message(PSocket* session, pint8 player_id, const pchar message[
     return TRUE;
 }
 
-pboolean tc_send_level_initialize(PSocket* session) {
+pboolean tc_protocol_send_level_initialize(PSocket* session) {
     if (!tc_protocol_send_byte(session, 0x02)) {
         return FALSE;
     }
     return TRUE;
 }
 
-pboolean tc_send_level_initialize2(PSocket* session, pint32 block_count) {
+pboolean tc_protocol_send_level_initialize2(PSocket* session, pint32 block_count) {
     if (!tc_protocol_send_byte(session, 0x02)) {
         return FALSE;
     }
@@ -343,7 +343,7 @@ pboolean tc_send_level_initialize2(PSocket* session, pint32 block_count) {
     return TRUE;
 }
 
-pboolean tc_send_level_data_chunk(PSocket* session, puint16 chunk_length, const pchar chunk_data[1024], pchar percent_complete) {
+pboolean tc_protocol_send_level_data_chunk(PSocket* session, puint16 chunk_length, const pchar chunk_data[1024], pchar percent_complete) {
     if (!tc_protocol_send_byte(session, 0x03)) {
         return FALSE;
     }
@@ -359,7 +359,7 @@ pboolean tc_send_level_data_chunk(PSocket* session, puint16 chunk_length, const 
     return TRUE;
 }
 
-pboolean tc_send_level_finalize(PSocket* session, pint16 x_size, pint16 y_size, pint16 z_size) {
+pboolean tc_protocol_send_level_finalize(PSocket* session, pint16 x_size, pint16 y_size, pint16 z_size) {
     if (!tc_protocol_send_byte(session, 0x04)) {
         return FALSE;
     }
@@ -370,6 +370,160 @@ pboolean tc_send_level_finalize(PSocket* session, pint16 x_size, pint16 y_size, 
         return FALSE;
     }
     if (!tc_protocol_send_short(session, z_size)) {
+        return FALSE;
+    }
+    return TRUE;
+}
+
+pboolean tc_protocol_send_set_block(PSocket* session, pint16 x, pint16 y, pint16 z, pchar block) {
+    if (!tc_protocol_send_byte(session, 0x06)) {
+        return FALSE;
+    }
+    
+    if (!tc_protocol_send_short(session, x)) {
+        return FALSE;
+    }
+    if (!tc_protocol_send_short(session, y)) {
+        return FALSE;
+    }
+    if (!tc_protocol_send_short(session, z)) {
+        return FALSE;
+    }
+
+    if (!tc_protocol_send_byte(session, block)) {
+        return FALSE;
+    }
+    return TRUE;
+}
+
+pboolean tc_protocol_send_set_block2(PSocket* session, pint16 x, pint16 y, pint16 z, puint16 block) {
+    if (!tc_protocol_send_byte(session, 0x06)) {
+        return FALSE;
+    }
+    if (!tc_protocol_send_short(session, x)) {
+        return FALSE;
+    }
+    if (!tc_protocol_send_short(session, y)) {
+        return FALSE;
+    }
+    if (!tc_protocol_send_short(session, z)) {
+        return FALSE;
+    }
+    if (!tc_protocol_send_short(session, block)) {
+        return FALSE;
+    }
+    return TRUE;
+}
+
+pboolean tc_protocol_send_spawn_player(PSocket* session, pint8 player_id, const pchar player_name[], pint16 x, pint16 y, pint16 z, pchar heading, pchar pitch) {
+    if (!tc_protocol_send_byte(session, 0x07)) {
+        return FALSE;
+    }
+    if (!tc_protocol_send_byte(session, (pchar)player_id)) {
+        return FALSE;
+    }
+    if (!tc_protocol_send_string(session, player_name)) {
+        return FALSE;
+    }
+    if (!tc_protocol_send_short(session, x)) {
+        return FALSE;
+    }
+    if (!tc_protocol_send_short(session, y)) {
+        return FALSE;
+    }
+    if (!tc_protocol_send_short(session, z)) {
+        return FALSE;
+    }
+    if (!tc_protocol_send_byte(session, heading)) {
+        return FALSE;
+    }
+    if (!tc_protocol_send_byte(session, pitch)) {
+        return FALSE;
+    }
+    return TRUE;
+}
+
+pboolean tc_protocol_send_set_player_position_and_orientation(PSocket* session, pint8 player_id, pint16 x, pint16 y, pint16 z, pchar heading, pchar pitch) {
+    if (!tc_protocol_send_byte(session, 0x08)) {
+        return FALSE;
+    }
+    if (!tc_protocol_send_byte(session, (pchar)player_id)) {
+        return FALSE;
+    }
+
+    if (!tc_protocol_send_short(session, x)) {
+        return FALSE;
+    }
+    if (!tc_protocol_send_short(session, y)) {
+        return FALSE;
+    }
+    if (!tc_protocol_send_short(session, z)) {
+        return FALSE;
+    }
+    if (!tc_protocol_send_byte(session, heading)) {
+        return FALSE;
+    }
+    if (!tc_protocol_send_byte(session, pitch)) {
+        return FALSE;
+    }
+    return TRUE;
+}
+
+pboolean tc_protocol_send_update_player_position_and_orientation_delta(PSocket* session, pint8 player_id, pint16 delta_x, pint16 delta_y, pint16 delta_z, pchar heading, pchar pitch) {
+    if (!tc_protocol_send_byte(session, 0x09)) {
+        return FALSE;
+    }
+    if (!tc_protocol_send_byte(session, (pchar)player_id)) {
+        return FALSE;
+    }
+    if (!tc_protocol_send_short(session, delta_x)) {
+        return FALSE;
+    }
+    if (!tc_protocol_send_short(session, delta_y)) {
+        return FALSE;
+    }
+    if (!tc_protocol_send_short(session, delta_z)) {
+        return FALSE;
+    }
+    if (!tc_protocol_send_byte(session, heading)) {
+        return FALSE;
+    }
+    if (!tc_protocol_send_byte(session, pitch)) {
+        return FALSE;
+    }
+    return TRUE;
+}
+
+pboolean tc_protocol_update_player_position_delta(PSocket* session, pint8 player_id, pint16 delta_x, pint16 delta_y, pint16 delta_z) {
+    if (!tc_protocol_send_byte(session, 0x0a)) {
+        return FALSE;
+    }
+    if (!tc_protocol_send_byte(session, (pchar)player_id)) {
+        return FALSE;
+    }
+    if (!tc_protocol_send_short(session, delta_x)) {
+        return FALSE;
+    }
+    if (!tc_protocol_send_short(session, delta_y)) {
+        return FALSE;
+    }
+    if (!tc_protocol_send_short(session, delta_z)) {
+        return FALSE;
+    }
+    return TRUE;
+}
+
+pboolean tc_protocol_update_player_heading_and_pitch(PSocket* session, pint8 player_id, pchar heading, pchar pitch) {
+    if (!tc_protocol_send_byte(session, 0x0b)) {
+        return FALSE;
+    }
+    if (!tc_protocol_send_byte(session, (pchar)player_id)) {
+        return FALSE;
+    }
+    if (!tc_protocol_send_byte(session, heading)) {
+        return FALSE;
+    }
+    if (!tc_protocol_send_byte(session, pitch)) {
         return FALSE;
     }
     return TRUE;
