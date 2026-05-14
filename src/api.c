@@ -47,12 +47,22 @@ static void free_send_map_data(tc_send_map_data_t* send_map_data) {
 }
 
 static void handle_success(tc_send_map_data_t* send_map_data, pint session_generation) {
-    send_map_data->joinable->handle_map_send_success(
+    pboolean scheduled_new_task = send_map_data->joinable->handle_map_send_success(
         send_map_data->joinable, 
         send_map_data->session,
         send_map_data->priority,
         session_generation
     );
+    if (!scheduled_new_task) {
+        tc_thread_schedule_next(
+            &send_map_data->session->server->thread_pool,
+            tc_server_client_listen_task,
+            NULL,
+            send_map_data->session,
+            send_map_data->priority,
+            session_generation
+        );
+    }
 
     tc_session_release_action_lock(send_map_data->session);
     p_rwlock_reader_unlock(send_map_data->map->lock);
@@ -60,12 +70,15 @@ static void handle_success(tc_send_map_data_t* send_map_data, pint session_gener
 }
 
 static void handle_failure(tc_send_map_data_t* send_map_data, pint session_generation, pboolean release_lock) {
-    send_map_data->session->current_joinable->handle_map_send_failure(
+    pboolean kicked = send_map_data->session->current_joinable->handle_map_send_failure(
         send_map_data->joinable, 
         send_map_data->session, 
         send_map_data->priority, 
         session_generation
     );
+    if (kicked) {
+        tc_server_kick_session(send_map_data->session, "Failed to send map.", session_generation, TRUE);
+    }
 
     if (release_lock) {
         tc_session_release_action_lock(send_map_data->session);

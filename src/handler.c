@@ -177,7 +177,12 @@ static void finalize_player_identification(tc_session_t* session, tc_thread_pool
     TC_LOG_SESSION(log_info, session, "Finished handshake successfully.");
 
     // join the default/lobby
-    tc_session_join(session, NULL, session_generation, FALSE);
+    pboolean joined = tc_session_join(session, NULL, session_generation, FALSE);
+    if (!joined) {
+        tc_server_kick_session(session, "Failed to join default/lobby.", session_generation, TRUE);
+    }
+    tc_session_release_action_lock(session);
+    return;
 }
 
 static void handle_player_identification(void* arg, tc_thread_pool_task_priority_t priority, pint session_generation) {
