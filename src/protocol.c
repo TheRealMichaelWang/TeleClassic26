@@ -375,7 +375,7 @@ pboolean tc_protocol_send_level_finalize(PSocket* session, pint16 x_size, pint16
     return TRUE;
 }
 
-pboolean tc_protocol_send_set_block(PSocket* session, pint16 x, pint16 y, pint16 z, pchar block) {
+pboolean tc_protocol_send_set_block(PSocket* session, pint16 x, pint16 y, pint16 z, puint16 block, pboolean use_extended_blocks) {
     if (!tc_protocol_send_byte(session, 0x06)) {
         return FALSE;
     }
@@ -390,32 +390,35 @@ pboolean tc_protocol_send_set_block(PSocket* session, pint16 x, pint16 y, pint16
         return FALSE;
     }
 
-    if (!tc_protocol_send_byte(session, block)) {
-        return FALSE;
+    if (use_extended_blocks) {
+        if (!tc_protocol_send_short(session, block)) {
+            return FALSE;
+        }
+    } else {
+        if (!tc_protocol_send_byte(session, (pchar)(block & 0xFF))) {
+            return FALSE;
+        }
     }
     return TRUE;
 }
 
-pboolean tc_protocol_send_set_block2(PSocket* session, pint16 x, pint16 y, pint16 z, puint16 block) {
-    if (!tc_protocol_send_byte(session, 0x06)) {
+static pboolean send_position(PSocket* session, pint32 position, pboolean use_extended_positions) {
+    if (!tc_protocol_send_short(session, position >> 16)) {
         return FALSE;
     }
-    if (!tc_protocol_send_short(session, x)) {
-        return FALSE;
-    }
-    if (!tc_protocol_send_short(session, y)) {
-        return FALSE;
-    }
-    if (!tc_protocol_send_short(session, z)) {
-        return FALSE;
-    }
-    if (!tc_protocol_send_short(session, block)) {
-        return FALSE;
+    if (use_extended_positions) {
+        if (!tc_protocol_send_int(session, position)) {
+            return FALSE;
+        }
+    } else {
+        if (!tc_protocol_send_short(session, (pint16)(position & 0xFFFF))) {
+            return FALSE;
+        }
     }
     return TRUE;
 }
 
-pboolean tc_protocol_send_spawn_player(PSocket* session, pint8 player_id, const pchar player_name[], pint16 x, pint16 y, pint16 z, pchar heading, pchar pitch) {
+pboolean tc_protocol_send_spawn_player(PSocket* session, pint8 player_id, const pchar player_name[], pint32 x, pint32 y, pint32 z, pchar heading, pchar pitch, pboolean use_extended_positions) {
     if (!tc_protocol_send_byte(session, 0x07)) {
         return FALSE;
     }
@@ -425,13 +428,13 @@ pboolean tc_protocol_send_spawn_player(PSocket* session, pint8 player_id, const 
     if (!tc_protocol_send_string(session, player_name)) {
         return FALSE;
     }
-    if (!tc_protocol_send_short(session, x)) {
+    if (!send_position(session, x, use_extended_positions)) {
         return FALSE;
     }
-    if (!tc_protocol_send_short(session, y)) {
+    if (!send_position(session, y, use_extended_positions)) {
         return FALSE;
     }
-    if (!tc_protocol_send_short(session, z)) {
+    if (!send_position(session, z, use_extended_positions)) {
         return FALSE;
     }
     if (!tc_protocol_send_byte(session, heading)) {
@@ -443,7 +446,7 @@ pboolean tc_protocol_send_spawn_player(PSocket* session, pint8 player_id, const 
     return TRUE;
 }
 
-pboolean tc_protocol_send_set_player_position_and_orientation(PSocket* session, pint8 player_id, pint16 x, pint16 y, pint16 z, pchar heading, pchar pitch) {
+pboolean tc_protocol_send_set_player_position_and_orientation(PSocket* session, pint8 player_id, pint32 x, pint32 y, pint32 z, pchar heading, pchar pitch, pboolean use_extended_positions) {
     if (!tc_protocol_send_byte(session, 0x08)) {
         return FALSE;
     }
@@ -451,13 +454,13 @@ pboolean tc_protocol_send_set_player_position_and_orientation(PSocket* session, 
         return FALSE;
     }
 
-    if (!tc_protocol_send_short(session, x)) {
+    if (!send_position(session, x, use_extended_positions)) {
         return FALSE;
     }
-    if (!tc_protocol_send_short(session, y)) {
+    if (!send_position(session, y, use_extended_positions)) {
         return FALSE;
     }
-    if (!tc_protocol_send_short(session, z)) {
+    if (!send_position(session, z, use_extended_positions)) {
         return FALSE;
     }
     if (!tc_protocol_send_byte(session, heading)) {
@@ -469,20 +472,20 @@ pboolean tc_protocol_send_set_player_position_and_orientation(PSocket* session, 
     return TRUE;
 }
 
-pboolean tc_protocol_send_update_player_position_and_orientation_delta(PSocket* session, pint8 player_id, pint16 delta_x, pint16 delta_y, pint16 delta_z, pchar heading, pchar pitch) {
+pboolean tc_protocol_send_update_player_position_and_orientation_delta(PSocket* session, pint8 player_id, pint32 delta_x, pint32 delta_y, pint32 delta_z, pchar heading, pchar pitch, pboolean use_extended_positions) {
     if (!tc_protocol_send_byte(session, 0x09)) {
         return FALSE;
     }
     if (!tc_protocol_send_byte(session, (pchar)player_id)) {
         return FALSE;
     }
-    if (!tc_protocol_send_short(session, delta_x)) {
+    if (!send_position(session, delta_x, use_extended_positions)) {
         return FALSE;
     }
-    if (!tc_protocol_send_short(session, delta_y)) {
+    if (!send_position(session, delta_y, use_extended_positions)) {
         return FALSE;
     }
-    if (!tc_protocol_send_short(session, delta_z)) {
+    if (!send_position(session, delta_z, use_extended_positions)) {
         return FALSE;
     }
     if (!tc_protocol_send_byte(session, heading)) {
@@ -494,20 +497,20 @@ pboolean tc_protocol_send_update_player_position_and_orientation_delta(PSocket* 
     return TRUE;
 }
 
-pboolean tc_protocol_update_player_position_delta(PSocket* session, pint8 player_id, pint16 delta_x, pint16 delta_y, pint16 delta_z) {
+pboolean tc_protocol_update_player_position_delta(PSocket* session, pint8 player_id, pint32 delta_x, pint32 delta_y, pint32 delta_z, pboolean use_extended_positions) {
     if (!tc_protocol_send_byte(session, 0x0a)) {
         return FALSE;
     }
     if (!tc_protocol_send_byte(session, (pchar)player_id)) {
         return FALSE;
     }
-    if (!tc_protocol_send_short(session, delta_x)) {
+    if (!send_position(session, delta_x, use_extended_positions)) {
         return FALSE;
     }
-    if (!tc_protocol_send_short(session, delta_y)) {
+    if (!send_position(session, delta_y, use_extended_positions)) {
         return FALSE;
     }
-    if (!tc_protocol_send_short(session, delta_z)) {
+    if (!send_position(session, delta_z, use_extended_positions)) {
         return FALSE;
     }
     return TRUE;
