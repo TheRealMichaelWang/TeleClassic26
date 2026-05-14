@@ -255,7 +255,7 @@ pboolean tc_cpe_send_env_map_appearance1(PSocket* session, const pchar texture_u
 }
 
 pboolean tc_cpe_send_env_map_appearance2(PSocket* session, const pchar texture_url[], pchar side_block, pchar edge_block, pint16 side_level, pint16 cloud_level, pint16 maximum_view_distance) {
-    if (!tc_protocol_send_byte(session, 0x2b)) {
+    if (!tc_protocol_send_byte(session, 0x1e)) {
         return FALSE;
     }
     if (!tc_protocol_send_string(session, texture_url)) {
@@ -280,7 +280,7 @@ pboolean tc_cpe_send_env_map_appearance2(PSocket* session, const pchar texture_u
 }
 
 pboolean tc_cpe_send_env_set_weather_type(PSocket* session, pchar weather_type) {
-    if (!tc_protocol_send_byte(session, 0x2c)) {
+    if (!tc_protocol_send_byte(session, 0x1f)) {
         return FALSE;
     }
     if (!tc_protocol_send_byte(session, weather_type)) {
@@ -294,7 +294,7 @@ pboolean tc_cpe_send_set_env_color(PSocket* session, pchar color_field, pint16 r
     TC_ASSERT(green >= 0 && green <= 255, "Green value must be between 0 and 255");
     TC_ASSERT(blue >= 0 && blue <= 255, "Blue value must be between 0 and 255");
 
-    if (!tc_protocol_send_byte(session, 0x2d)) {
+    if (!tc_protocol_send_byte(session, 0x19)) {
         return FALSE;
     }
     if (!tc_protocol_send_byte(session, color_field)) {

@@ -465,6 +465,7 @@ pboolean tc_server_start(tc_server_t *server) {
     if (!schedule_success) {
         log_error("Failed to schedule listener worker task");
         p_socket_close(server->listener_socket, NULL);
+        p_socket_free(server->listener_socket);
         return FALSE;
     }
 
