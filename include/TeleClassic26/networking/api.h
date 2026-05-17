@@ -34,6 +34,7 @@ pboolean tc_api_send_message(tc_session_t* session, tc_message_type_t message_ty
 // - schedule_info: the task backlog entry to schedule the map send task on
 // - return: TRUE if the world was scheduled, FALSE otherwise
 // - current_priority: the priority of the current task calling this function
+// NOTE: we assume a pre_loaded map came from the map cache 
 pboolean tc_api_schedule_send_map(
     tc_session_t* session,
     const pchar* file_name, 

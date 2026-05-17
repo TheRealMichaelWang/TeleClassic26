@@ -13,6 +13,10 @@ static void* heartbeat_worker(void* arg) {
     tc_heartbeat_manager_t* manager = (tc_heartbeat_manager_t*)arg;
 
     p_mutex_lock(manager->lock);
+    while (!manager->started) {
+        p_cond_variable_wait(manager->start_condition, manager->lock);
+    }
+
     while (!manager->shutdown) {
         for (pint i = 0; i < manager->num_services; i++) {
             heartbeat_generate_salt(manager->services[i].current_salt);
@@ -52,9 +56,16 @@ pboolean heartbeat_manager_init(
     manager->num_services = num_services;
     manager->active_players = active_players;
     manager->shutdown = FALSE;
+    manager->started = FALSE;
 
     manager->lock = p_mutex_new();
     if (P_UNLIKELY(manager->lock == NULL)) {
+        return FALSE;
+    }
+
+    manager->start_condition = p_cond_variable_new();
+    if (P_UNLIKELY(manager->start_condition == NULL)) {
+        p_mutex_free(manager->lock);
         return FALSE;
     }
 
@@ -67,6 +78,7 @@ pboolean heartbeat_manager_init(
     );
     if (P_UNLIKELY(manager->auth_tree == NULL)) {
         p_mutex_free(manager->lock);
+        p_cond_variable_free(manager->start_condition);
         return FALSE;
     }
 
@@ -75,7 +87,6 @@ pboolean heartbeat_manager_init(
         manager->services[i].web_play_url = NULL;
     }
 
-    p_mutex_lock(manager->lock);
     manager->heartbeat_thread = p_uthread_create(
         heartbeat_worker, 
         manager, 
@@ -84,9 +95,9 @@ pboolean heartbeat_manager_init(
     );
     if (P_UNLIKELY(manager->heartbeat_thread == NULL)) {
         log_error("Failed to create heartbeat thread");
-        p_mutex_unlock(manager->lock);
         p_mutex_free(manager->lock);
         p_tree_free(manager->auth_tree);
+        p_cond_variable_free(manager->start_condition);
         return FALSE;
     }
 
@@ -114,6 +125,7 @@ void tc_heartbeat_manager_finalize(tc_heartbeat_manager_t* manager) {
 
     p_tree_free(manager->auth_tree);
     p_mutex_free(manager->lock);
+    p_cond_variable_free(manager->start_condition);
 
     for (pint i = 0; i < manager->num_services; i++) {
         if (manager->services[i].web_play_url) {
@@ -133,12 +145,17 @@ void heartbeat_generate_salt(pchar salt[TC_HEARTBEAT_SALT_LENGTH]) {
 
 // Starts the heartbeat manager
 void tc_heartbeat_manager_start(tc_heartbeat_manager_t* manager) {
+    p_mutex_lock(manager->lock);
+    manager->started = TRUE;
+    p_cond_variable_signal(manager->start_condition);
     p_mutex_unlock(manager->lock);
 }
 
 // Stops the heartbeat manager
 void tc_heartbeat_manager_stop(tc_heartbeat_manager_t* manager) {
     log_info("Stopping heartbeat manager...");
+
+    p_mutex_lock(manager->lock);
     manager->shutdown = TRUE;
     p_mutex_unlock(manager->lock);
 }

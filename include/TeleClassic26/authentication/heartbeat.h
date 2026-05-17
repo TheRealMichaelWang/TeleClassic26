@@ -48,12 +48,14 @@ typedef struct tc_heartbeat_manager {
     tc_heartbeat_service_t* services;
     PUThread* heartbeat_thread;
     PMutex* lock;
+    PCondVariable* start_condition;
     PTree* auth_tree; //stores all used keys for the current heartbeat cycle
 
     pint num_services;
 
     volatile pint* active_players;
-    volatile pboolean shutdown;
+    pboolean shutdown;
+    pboolean started;
 } tc_heartbeat_manager_t;
 
 // Generates a random base-62 salt

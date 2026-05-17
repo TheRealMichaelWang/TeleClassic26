@@ -10,6 +10,7 @@
 #include <TeleClassic26/gameplay/blocks.h>
 #include <TeleClassic26/utils.h>
 #include <plibsys.h>
+#include <string.h>
 
 pboolean tc_api_send_message(tc_session_t* session, tc_message_type_t message_type, const pchar message[]) {
     if (tc_session_get_extension_version(session, TC_CPE_MESSAGE_TYPES_EXTENSION_INDEX) > 0) {
@@ -516,11 +517,8 @@ pboolean tc_api_schedule_send_map(
 
     send_map_data->session = session;
     send_map_data->file_name = file_name;
-    send_map_data->map = pre_loaded_map;
+    send_map_data->map = NULL;
     send_map_data->schedule_info = schedule_info;
-    if (pre_loaded_map) {
-        tc_map_ref(pre_loaded_map);
-    }
 
     tc_task_backlog_entry_t load_map_schedule_info = {
         .success_handler = on_map_load_success,
@@ -530,13 +528,24 @@ pboolean tc_api_schedule_send_map(
         .session_generation = schedule_info.session_generation
     };
 
-    tc_map_cache_schedule_open(
-        &session->server->map_cache,
-        file_name,
-        &session->server->thread_pool,
-        load_map_schedule_info,
-        current_priority
-    );
+    if (pre_loaded_map) {
+        tc_task_backlog_invoke_handler(
+            &load_map_schedule_info, 
+            &session->server->thread_pool, 
+            (tc_task_backlog_aquire_handler_t)tc_map_ref,
+            (tc_task_backlog_release_handler_t)tc_map_unref,
+            pre_loaded_map,
+            current_priority
+        );
+    } else {
+        tc_map_cache_schedule_open(
+            &session->server->map_cache,
+            file_name,
+            &session->server->thread_pool,
+            load_map_schedule_info,
+            current_priority
+        );
+    }
 
     return TRUE;
 }
