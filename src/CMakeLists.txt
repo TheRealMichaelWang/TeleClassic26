@@ -9,7 +9,9 @@ add_executable(${PROJECT_NAME}
     api.c
     log.c
     map.c
+    map_cache.c
     joinable.c
+    task_backlog.c
 )
 
 target_include_directories(${PROJECT_NAME} PRIVATE

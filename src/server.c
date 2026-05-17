@@ -159,7 +159,7 @@ static void disconnect_session(tc_session_t* session, pint session_generation) {
     TC_LOG_SESSION(log_info, session, "Disconnecting session %d...", session->id);
 
     if (session->current_joinable) {
-        session->current_joinable->leave(session->current_joinable, session, session_generation);
+        session->current_joinable->leave(session->current_joinable, session, TC_THREAD_POOL_TASK_PRIORITY_INVALID, session_generation);
         session->current_joinable = NULL;
     }
 

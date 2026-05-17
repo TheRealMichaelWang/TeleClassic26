@@ -89,7 +89,7 @@ tc_joinable_interface_t* tc_find_joinable(tc_join_router_t* router, const pchar*
     return userdata.best_match;
 }
 
-pboolean tc_session_join(tc_session_t* session, const pchar* address, pint session_generation, pboolean aquire_lock) {
+pboolean tc_session_join(tc_session_t* session, const pchar* address, tc_thread_pool_task_priority_t current_priority, pint session_generation, pboolean aquire_lock) {
     tc_joinable_interface_t* joinable = tc_find_joinable(&session->server->join_router, address);
     if (!joinable) {
         TC_LOG_SESSION(log_error, session, "Failed to find %s that player can join. ", address);
@@ -105,10 +105,10 @@ pboolean tc_session_join(tc_session_t* session, const pchar* address, pint sessi
     }
 
     if (session->current_joinable) { // leave old joinable if applicable
-        session->current_joinable->leave(session->current_joinable, session, session_generation);
+        session->current_joinable->leave(session->current_joinable, session, current_priority, session_generation);
     }
 
-    if (!joinable->attempt_join(joinable, session, address, session_generation)) {
+    if (!joinable->attempt_join(joinable, session, address, current_priority, session_generation)) {
         TC_LOG_SESSION(log_error, session, "Failed to join %s.", address);
         
         //send a msg indicating that the player can't join the world or may not be allowed to join the world
@@ -122,7 +122,7 @@ pboolean tc_session_join(tc_session_t* session, const pchar* address, pint sessi
         }
 
         tc_joinable_interface_t* default_joinable = session->server->join_router.default_joinable;
-        if (!default_joinable->attempt_join(default_joinable, session, address, session_generation)) {
+        if (!default_joinable->attempt_join(default_joinable, session, address, current_priority, session_generation)) {
             TC_LOG_SESSION(log_error, session, "Failed to reroute playerto default/lobby.", address);
             tc_server_kick_session(session, "Failed to reroute you to default/lobby after failing to join a world.", -1, FALSE);
             

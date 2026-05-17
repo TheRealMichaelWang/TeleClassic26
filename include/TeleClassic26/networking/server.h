@@ -6,7 +6,7 @@
 #include <TeleClassic26/networking/protocol.h>
 #include <TeleClassic26/authentication/heartbeat.h>
 #include <TeleClassic26/gameplay/joinable.h>
-#include <TeleClassic26/gameplay/map.h>
+#include <TeleClassic26/gameplay/map_cache.h>
 
 #define TC_SERVER_MAX_SESSIONS 128
 #define TC_SERVER_PING_INTERVAL 15000000 //15 seconds in microseconds

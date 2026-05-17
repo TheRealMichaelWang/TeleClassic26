@@ -316,3 +316,44 @@ void tc_thread_schedule_next(
     p_cond_variable_signal(pool->not_empty);
     p_mutex_unlock(pool->lock);
 }
+
+
+pboolean tc_thread_schedule_next2(
+    tc_thread_pool_t *pool,
+    tc_thread_pool_task_t next_task,
+    void *arg,
+    tc_thread_pool_task_priority_t current_priority,
+    pint current_session_generation
+) {
+    p_mutex_lock(pool->lock);
+
+    if (pool->shutdown) {
+        p_mutex_unlock(pool->lock);
+        return FALSE;
+    }
+
+    tc_thread_pool_context_t task = {
+        .func = next_task, 
+        .arg = arg, 
+        .priority = current_priority,
+        .session_generation = current_session_generation
+    };
+
+    if (task.func == NULL) {
+        p_mutex_unlock(pool->lock);
+        return FALSE;
+    }
+
+    pboolean enqueue_success = task_buffer_enqueue(
+        pool, 
+        &pool->task_prio_buffer[current_priority], 
+        &task, 
+        TRUE,
+        current_priority == TC_THREAD_POOL_TASK_PRIORITY_BLOCKING
+    );
+    TC_ASSERT(enqueue_success, "Failed to enqueue next task in task chain");
+
+    p_cond_variable_signal(pool->not_empty);
+    p_mutex_unlock(pool->lock);
+    return TRUE;
+}

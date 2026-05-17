@@ -60,6 +60,7 @@ void tc_task_schedule_backlog(
     void* result, 
     tc_thread_pool_task_priority_t current_priority
 ) {
+    pboolean task_chain_continued = FALSE;
     for (tc_task_backlog_block_t* block = backlog->head_block; block != NULL; block = block->next_block) {
         for (psize i = 0; i < block->count; i++) {
             tc_task_backlog_entry_t* entry = &block->entries[i];
@@ -82,15 +83,24 @@ void tc_task_schedule_backlog(
             args->context = entry->context;
 
             // use current task chain instead of terminating it
-            if (entry->priority == current_priority) {
-                tc_thread_schedule_next(
+            if (entry->priority == current_priority && !task_chain_continued) {
+                int continue_success =tc_thread_schedule_next2(
                     pool,
                     (tc_thread_pool_task_t)(entry->success_handler),
-                    NULL,
                     args,
                     current_priority,
                     entry->session_generation
                 );
+                if (!continue_success) {
+                    entry->failure_handler(entry->context, entry->session_generation);
+                    if (release_handler) {
+                        release_handler(result);
+                    }
+                    p_free(args);
+                    continue;
+                }
+
+                task_chain_continued = TRUE;
                 continue;
             }
 
@@ -115,7 +125,14 @@ void tc_task_schedule_backlog(
     return;
 }
 
-void tc_task_backlog_invoke_handler(tc_task_backlog_entry_t* entry, tc_thread_pool_t* pool, void* result, pboolean use_current_timeslice) {
+void tc_task_backlog_invoke_handler(
+    tc_task_backlog_entry_t* entry, 
+    tc_thread_pool_t* pool, 
+    tc_task_backlog_aquire_handler_t aquire_handler,
+    tc_task_backlog_release_handler_t release_handler,
+    void* result, 
+    tc_thread_pool_task_priority_t current_priority
+) {
     if (result == NULL) {
         entry->failure_handler(entry->context, entry->session_generation);
         return;
@@ -130,16 +147,28 @@ void tc_task_backlog_invoke_handler(tc_task_backlog_entry_t* entry, tc_thread_po
     args->result = result;
     args->context = entry->context;
 
-    if (use_current_timeslice) {
-        entry->success_handler(args, entry->priority, entry->session_generation);
+    if (aquire_handler) {
+        aquire_handler(result);
     }
-    else {
-        if (!tc_thread_schedule_new(pool, (tc_thread_pool_task_t)(entry->success_handler), args, entry->priority, entry->session_generation)){
+    if (current_priority != TC_THREAD_POOL_TASK_PRIORITY_INVALID && current_priority == entry->priority) {
+        if (!tc_thread_schedule_next2(pool, (tc_thread_pool_task_t)(entry->success_handler), args, current_priority, entry->session_generation)) {
             entry->failure_handler(entry->context, entry->session_generation);
+            if (release_handler) {
+                release_handler(result);
+            }
             p_free(args);
             return;
         }
     }
-
+    else {
+        if (!tc_thread_schedule_new(pool, (tc_thread_pool_task_t)(entry->success_handler), args, entry->priority, entry->session_generation)) {
+            entry->failure_handler(entry->context, entry->session_generation);
+            if (release_handler) {
+                release_handler(result);
+            }
+            p_free(args);
+            return;
+        }
+    }
     // do not free args here, it MUST be freed by the success handler
 }

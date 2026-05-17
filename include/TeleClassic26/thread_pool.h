@@ -9,6 +9,7 @@
 #define TC_THREAD_POOL_MAX_PRIORITY 4
 
 typedef enum tc_thread_pool_task_priority {
+    TC_THREAD_POOL_TASK_PRIORITY_INVALID = -1,
     TC_THREAD_POOL_TASK_PRIORITY_HIGH = 0,
     TC_THREAD_POOL_TASK_PRIORITY_MEDIUM = 1,
     TC_THREAD_POOL_TASK_PRIORITY_BLOCKING = 2,
@@ -102,8 +103,7 @@ pboolean tc_thread_schedule_new(
     pint session_generation
 );
 
-// Schedule a next task to the thread pool
-// - return: TRUE if the task was scheduled, FALSE otherwise
+// Schedule a next task to the thread pool (always succedes)
 // - next_task: function to execute
 // - shutdown_task: executed when pool is shutting down; you may pass NULL to nop
 // - priority: priority of the task
@@ -113,6 +113,20 @@ void tc_thread_schedule_next(
     tc_thread_pool_t *pool,
     tc_thread_pool_task_t next_task,
     tc_thread_pool_task_t shutdown_task,
+    void *arg,
+    tc_thread_pool_task_priority_t current_priority,
+    pint current_session_generation
+);
+
+// Schedule a next task to the thread pool
+// - return: TRUE if the task was scheduled, FALSE otherwise
+// - next_task: function to execute
+// - priority: priority of the task
+// NOTE: use this to schedule the next task in a task chain
+// NOTE: priority must be the same as the priority of the calling task!
+pboolean tc_thread_schedule_next2(
+    tc_thread_pool_t *pool,
+    tc_thread_pool_task_t next_task,
     void *arg,
     tc_thread_pool_task_priority_t current_priority,
     pint current_session_generation

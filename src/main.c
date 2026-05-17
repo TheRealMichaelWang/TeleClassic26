@@ -31,14 +31,41 @@ tc_heartbeat_info_t heartbeat_info = {
 * Rig for testing server
 */
 
-static void* test_attempt_join(void* this_context, tc_session_t* session, const pchar* world_name, pint session_generation) {
+static void test_handle_map_send_failure(void* context, pint session_generation) {
+    tc_session_t* session = (tc_session_t*)context;
+    tc_server_kick_session(session, "Failed to send map.", session_generation, FALSE);
+    return;
+}
+
+static void test_handle_map_send_success(tc_task_backlog_args_t* args, tc_thread_pool_task_priority_t priority, pint session_generation) {
+    tc_session_t* session = (tc_session_t*)args->context;
+    tc_thread_schedule_next(
+        &session->server->thread_pool,
+        tc_server_client_listen_task,
+        tc_server_shutdown_client_task,
+        args->context,
+        priority,
+        session_generation
+    );
+    p_free(args);
+}
+
+static void* test_attempt_join(void* this_context, tc_session_t* session, const pchar* world_name, tc_thread_pool_task_priority_t current_priority, pint session_generation) {
+    
+    tc_task_backlog_entry_t schedule_info = {
+        .success_handler = test_handle_map_send_success,
+        .failure_handler = test_handle_map_send_failure,
+        .context = session,
+        .priority = TC_THREAD_POOL_TASK_PRIORITY_MEDIUM,
+        .session_generation = session_generation
+    };
+    
     pboolean success = tc_api_schedule_send_map(
         session,
         "./classic_worlds/test_lobby.cw",
         NULL,
-        this_context,
-        TC_THREAD_POOL_TASK_PRIORITY_MEDIUM,
-        session_generation
+        schedule_info,
+        current_priority
     );
     if (!success) {
         return NULL;
@@ -46,7 +73,7 @@ static void* test_attempt_join(void* this_context, tc_session_t* session, const 
     return this_context;
 }
 
-static void test_leave(void* this_context, tc_session_t* session, pint session_generation) {
+static void test_leave(void* this_context, tc_session_t* session, tc_thread_pool_task_priority_t current_priority, pint session_generation) {
     return;
 }
 
@@ -66,14 +93,6 @@ static void test_handle_server_stop(void* this_context) {
     return;
 }
 
-static void test_handle_map_send_failure(void* this_context, tc_session_t* session, tc_thread_pool_task_priority_t current_priority, pint session_generation) {
-    tc_server_kick_session(session, "Failed to send map.", -1, FALSE);
-    return;
-}
-
-static void test_handle_map_send_success(void* this_context, tc_session_t* session, tc_thread_pool_task_priority_t current_priority, pint session_generation) {
-    return;
-}
 
 tc_joinable_interface_t* build_test_joinable(void) {
     tc_joinable_interface_t* joinable = p_malloc(sizeof(tc_joinable_interface_t));
@@ -87,8 +106,6 @@ tc_joinable_interface_t* build_test_joinable(void) {
     joinable->handle_position_update = test_handle_position_update;
     joinable->handle_message = test_handle_message;
     joinable->handle_server_stop = test_handle_server_stop;
-    joinable->handle_map_send_failure = test_handle_map_send_failure;
-    joinable->handle_map_send_success = test_handle_map_send_success;
     return joinable;
 }
 

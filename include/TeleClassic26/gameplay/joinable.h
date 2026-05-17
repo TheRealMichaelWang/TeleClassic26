@@ -15,11 +15,11 @@ typedef struct tc_joinable_interface {
     // - return: a pointer to the joinable interface
     // NOTE: the custom return is to allow for routing (i.e. a lobby routes to multiple sub lobbies)
     // NOTE: if succesful/true is returned, the attempt_join handler must schedule a next task!!!! (UB if not)
-    void* (*attempt_join)(void* this_context, tc_session_t* session, const pchar* world_name, pint session_generation);
+    void* (*attempt_join)(void* this_context, tc_session_t* session, const pchar* world_name, tc_thread_pool_task_priority_t current_priority, pint session_generation);
 
     // leaves world
     // - call this to leave the world (must be called before the session is destroyed)
-    void (*leave)(void* this_context, tc_session_t* session, pint session_generation);
+    void (*leave)(void* this_context, tc_session_t* session, tc_thread_pool_task_priority_t current_priority, pint session_generation);
 
     /*
         Handle specific player request packets
@@ -74,6 +74,6 @@ void tc_join_router_stop_all(tc_join_router_t* router);
 
 tc_joinable_interface_t* tc_find_joinable(tc_join_router_t* router, const pchar* address);
 
-pboolean tc_session_join(tc_session_t* session, const pchar* address, pint session_generation, pboolean aquire_lock);
+pboolean tc_session_join(tc_session_t* session, const pchar* address, tc_thread_pool_task_priority_t current_priority, pint session_generation, pboolean aquire_lock);
 
 #endif /* TELECLASSIC26_GAMEPLAY_WORLD_H */

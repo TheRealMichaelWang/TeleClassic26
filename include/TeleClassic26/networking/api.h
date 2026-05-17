@@ -5,7 +5,7 @@
 #include <TeleClassic26/networking/protocol.h>
 #include <TeleClassic26/thread_pool.h>
 #include <TeleClassic26/networking/server.h>
-#include <TeleClassic26/gameplay/map.h>
+#include <TeleClassic26/task_backlog.h>
 
 // message types for the server to send to the client
 // see MessageTypes CPE extension on wiki.vg for details
@@ -30,17 +30,16 @@ pboolean tc_api_send_message(tc_session_t* session, tc_message_type_t message_ty
 // schedules a world to be sent to the session
 // - session: the session to schedule the world to be sent to
 // - file_name: the name of the world file to send
-// - priority: the priority of the task
-// - on_success: the task to schedule on successful transmission of the map
-// - on_failure: the task to schedule on failure to transmit the map
+// - pre_loaded_map: the map to send. If NULL, the map will be loaded from the map cache.
+// - schedule_info: the task backlog entry to schedule the map send task on
 // - return: TRUE if the world was scheduled, FALSE otherwise
+// - current_priority: the priority of the current task calling this function
 pboolean tc_api_schedule_send_map(
     tc_session_t* session,
     const pchar* file_name, 
     tc_map_t* pre_loaded_map,
-    tc_joinable_interface_t* joinable,
-    tc_thread_pool_task_priority_t priority,
-    pint session_generation
+    tc_task_backlog_entry_t schedule_info,
+    tc_thread_pool_task_priority_t current_priority
 );
 
 #endif /* TELECLASSIC26_LEVEL_H */

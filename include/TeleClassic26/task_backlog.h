@@ -85,7 +85,13 @@ void tc_task_schedule_backlog(
 // - entry: the entry to invoke the handler for
 // - pool: the thread pool to schedule the task on
 // - result: the result of the blocking task. Pass NULL if failure, then failure handlers will be invoked
-// - use_current_timeslice: if TRUE, the current thread/timeslice will be used to directly run the task. If FALSE, the task will be scheduled in the task pool
-void tc_task_backlog_invoke_handler(tc_task_backlog_entry_t* entry, tc_thread_pool_t* pool, void* result, pboolean use_current_timeslice);
+void tc_task_backlog_invoke_handler(
+    tc_task_backlog_entry_t* entry, 
+    tc_thread_pool_t* pool, 
+    tc_task_backlog_aquire_handler_t aquire_handler,
+    tc_task_backlog_release_handler_t release_handler,
+    void* result, 
+    tc_thread_pool_task_priority_t current_priority
+);
 
 #endif /* TELECLASSIC26_TASK_BACKLOG_H */
