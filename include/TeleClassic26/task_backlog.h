@@ -18,7 +18,7 @@
     that usually kicks the session. The failure handler must be short and cannot fail.
 */
 
-typedef void (*tc_task_backlog_failure_handler_t)(void *result, void *arg, pint session_generation);
+typedef void (*tc_task_backlog_failure_handler_t)(void *arg, pint session_generation);
 
 typedef struct tc_task_backlog_args {
     void *result;
@@ -52,15 +52,16 @@ typedef struct tc_task_backlog {
 } tc_task_backlog_t;
 
 // Initialize the task backlog
-pboolean tc_task_backlog_initialize(tc_task_backlog_block_t* backlog);
+pboolean tc_task_backlog_initialize(tc_task_backlog_t* backlog);
 
 // Finalize the task backlog
-void tc_task_backlog_finalize(tc_task_backlog_block_t* backlog);
+void tc_task_backlog_finalize(tc_task_backlog_t* backlog);
 
 // Push a new task to the backlog
-pboolean tc_task_backlog_push(tc_task_backlog_block_t* backlog, tc_task_backlog_entry_t* entry);
+pboolean tc_task_backlog_push(tc_task_backlog_t* backlog, tc_task_backlog_entry_t entry);
 
 // schedule all tasks in the backlog onto the thread pool
-void tc_task_schedule_backlog(tc_task_backlog_block_t* backlog, tc_thread_pool_t* pool, void* result);
+// - result: the result of the blocking task. Pass NULL if failure, then failure handlers will be invoked
+void tc_task_schedule_backlog(tc_task_backlog_t* backlog, tc_thread_pool_t* pool, void* result);
 
 #endif /* TELECLASSIC26_TASK_BACKLOG_H */
