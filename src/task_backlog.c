@@ -70,21 +70,31 @@ void tc_task_schedule_backlog(tc_task_backlog_t* backlog, tc_thread_pool_t* pool
         for (psize i = 0; i < block->count; i++) {
             tc_task_backlog_entry_t* entry = &block->entries[i];
 
-            // failure then invoke failure handler
+            // if failure then invoke failure handler
             if (result == NULL) {
-                entry->failure_handler(entry->args.context, entry->session_generation);
+                entry->failure_handler(entry->context, entry->session_generation);
                 continue;
             }
+
+            tc_task_backlog_args_t* args = p_malloc(sizeof(tc_task_backlog_args_t));
+            if (args == NULL) {
+                entry->failure_handler(entry->context, entry->session_generation);
+                continue;
+            }
+            args->result = result;
+            args->context = entry->context;
 
             // success then schedule success tasks
             if (!tc_thread_schedule_new(
                 pool, 
-                entry->task, 
-                entry->args.context, 
+                (tc_thread_pool_task_t)(entry->success_handler), 
+                args, 
                 entry->priority, 
                 entry->session_generation
             )) {
-                entry->failure_handler(entry->args.context, entry->session_generation);
+                entry->failure_handler(entry->context, entry->session_generation);
+                p_free(args);
+                continue;
             }
         }
     }

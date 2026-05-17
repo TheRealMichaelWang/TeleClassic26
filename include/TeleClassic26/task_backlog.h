@@ -18,18 +18,20 @@
     that usually kicks the session. The failure handler must be short and cannot fail.
 */
 
-typedef void (*tc_task_backlog_failure_handler_t)(void *arg, pint session_generation);
+typedef void (*tc_task_backlog_failure_handler_t)(void *context, pint session_generation);
 
 typedef struct tc_task_backlog_args {
     void *result;
     void *context;
 } tc_task_backlog_args_t;
 
+typedef void (*tc_task_backlog_success_handler_t)(tc_task_backlog_args_t* args, tc_thread_pool_task_priority_t priority, pint session_generation);
+
 typedef struct tc_task_backlog_entry {
-    tc_thread_pool_task_t task; //the main task to be scheduled
+    tc_task_backlog_success_handler_t success_handler; //the success handler to be scheduled if the main task is scheduled
     tc_task_backlog_failure_handler_t failure_handler; //the failure handler to be called if the main task cannot be scheduled
 
-    tc_task_backlog_args_t args;
+    void* context;
     
     tc_thread_pool_task_priority_t priority;
     pint session_generation;
