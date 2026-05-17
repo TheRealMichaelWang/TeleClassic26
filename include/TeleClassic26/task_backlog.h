@@ -16,7 +16,12 @@
 
     Note that in case of scheduling failure (sometimes the task pool is busy/full), we execute a special failure handler
     that usually kicks the session. The failure handler must be short and cannot fail.
+
+    NOTE: This data structure is not thread safe. You are expected to encapsulate calls with the appropriate locks.
 */
+
+typedef void (*tc_task_backlog_aquire_handler_t)(void *result);
+typedef void (*tc_task_backlog_release_handler_t)(void *result);
 
 typedef void (*tc_task_backlog_failure_handler_t)(void *context, pint session_generation);
 
@@ -49,12 +54,10 @@ typedef struct tc_task_backlog_block {
 typedef struct tc_task_backlog {
     tc_task_backlog_block_t* head_block;
     tc_task_backlog_block_t* tail_block;
-
-    PMutex* lock;
 } tc_task_backlog_t;
 
 // Initialize the task backlog
-pboolean tc_task_backlog_initialize(tc_task_backlog_t* backlog);
+void tc_task_backlog_initialize(tc_task_backlog_t* backlog);
 
 // Finalize the task backlog
 void tc_task_backlog_finalize(tc_task_backlog_t* backlog);
@@ -63,7 +66,26 @@ void tc_task_backlog_finalize(tc_task_backlog_t* backlog);
 pboolean tc_task_backlog_push(tc_task_backlog_t* backlog, tc_task_backlog_entry_t entry);
 
 // schedule all tasks in the backlog onto the thread pool
+// - backlog: the backlog to schedule the tasks from
+// - pool: the thread pool to schedule the tasks on
+// - aquire_handler: the handler to aquire the result (i.e. ref a map). Can be NULL if not needed.
+// - release_handler: the handler to release the result (i.e. unref a map). Can be NULL if not needed.
 // - result: the result of the blocking task. Pass NULL if failure, then failure handlers will be invoked
-void tc_task_schedule_backlog(tc_task_backlog_t* backlog, tc_thread_pool_t* pool, void* result);
+// - current_priority: the priority of the current task. This is used to determine if the tasks should be scheduled in the current timeslice or not
+void tc_task_schedule_backlog(
+    tc_task_backlog_t* backlog, 
+    tc_thread_pool_t* pool, 
+    tc_task_backlog_aquire_handler_t aquire_handler,
+    tc_task_backlog_release_handler_t release_handler,
+    void* result, 
+    tc_thread_pool_task_priority_t current_priority
+);
+
+// invoke the handler for a task
+// - entry: the entry to invoke the handler for
+// - pool: the thread pool to schedule the task on
+// - result: the result of the blocking task. Pass NULL if failure, then failure handlers will be invoked
+// - use_current_timeslice: if TRUE, the current thread/timeslice will be used to directly run the task. If FALSE, the task will be scheduled in the task pool
+void tc_task_backlog_invoke_handler(tc_task_backlog_entry_t* entry, tc_thread_pool_t* pool, void* result, pboolean use_current_timeslice);
 
 #endif /* TELECLASSIC26_TASK_BACKLOG_H */
