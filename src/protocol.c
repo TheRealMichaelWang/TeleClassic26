@@ -289,6 +289,59 @@ pboolean tc_cpe_send_env_set_weather_type(PSocket* session, pchar weather_type) 
     return TRUE;
 }
 
+pboolean tc_cpe_send_set_block_definition(
+    PSocket* session, 
+    puint16 block_id,
+    const pchar block_name[],
+    pchar solidity,
+    pchar movement_speed,
+    puint16 top_texture_id,
+    puint16 bottom_texture_id,
+    puint16 side_texture_id,
+    pchar transmits_light,
+    pchar walk_sound,
+    pchar full_bright,
+    pchar shape,
+    pchar block_draw,
+    pchar fog_density,
+    pchar fog_color_red,
+    pchar fog_color_green,
+    pchar fog_color_blue,
+    pboolean use_extended_blocks,
+    pboolean use_extended_textures
+) {
+    if (!tc_protocol_send_byte(session, 0x23)) { return FALSE; }
+
+    if (use_extended_blocks) {
+        if (!tc_protocol_send_short(session, block_id)) { return FALSE; }
+    } else {
+        if (!tc_protocol_send_byte(session, (pchar)(block_id & 0xFF))) { return FALSE; }
+    }
+
+    if (!tc_protocol_send_string(session, block_name)) { return FALSE; }
+    if (!tc_protocol_send_byte(session, solidity)) { return FALSE; }
+    if (!tc_protocol_send_byte(session, movement_speed)) { return FALSE; }
+    if (use_extended_textures) {
+        if (!tc_protocol_send_short(session, top_texture_id)) { return FALSE; }
+        if (!tc_protocol_send_short(session, bottom_texture_id)) { return FALSE; }
+        if (!tc_protocol_send_short(session, side_texture_id)) { return FALSE; }
+    } else {
+        if (!tc_protocol_send_byte(session, (pchar)(top_texture_id & 0xFF))) { return FALSE; }
+        if (!tc_protocol_send_byte(session, (pchar)(bottom_texture_id & 0xFF))) { return FALSE; }
+        if (!tc_protocol_send_byte(session, (pchar)(side_texture_id & 0xFF))) { return FALSE; }
+    }
+    if (!tc_protocol_send_byte(session, transmits_light)) { return FALSE; }
+    if (!tc_protocol_send_byte(session, walk_sound)) { return FALSE; }
+    if (!tc_protocol_send_byte(session, full_bright)) { return FALSE; }
+    if (!tc_protocol_send_byte(session, shape)) { return FALSE; }
+    if (!tc_protocol_send_byte(session, block_draw)) { return FALSE; }
+    if (!tc_protocol_send_byte(session, fog_density)) { return FALSE; }
+    if (!tc_protocol_send_byte(session, fog_color_red)) { return FALSE; }
+    if (!tc_protocol_send_byte(session, fog_color_green)) { return FALSE; }
+    if (!tc_protocol_send_byte(session, fog_color_blue)) { return FALSE; }
+    return TRUE;
+}
+
 pboolean tc_cpe_send_set_env_color(PSocket* session, pchar color_field, pint16 red, pint16 green, pint16 blue) {
     TC_ASSERT(red >= 0 && red <= 255, "Red value must be between 0 and 255");
     TC_ASSERT(green >= 0 && green <= 255, "Green value must be between 0 and 255");
