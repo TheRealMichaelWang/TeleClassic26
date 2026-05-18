@@ -1,5 +1,6 @@
 #include "TeleClassic26/gameplay/joinable.h"
 #include "TeleClassic26/networking/api.h"
+#include "TeleClassic26/networking/protocol.h"
 #include "TeleClassic26/thread_pool.h"
 #include <plibsys.h>
 #include <curl/curl.h>
@@ -39,6 +40,21 @@ static void test_handle_map_send_failure(void* context, pint session_generation)
 
 static void test_handle_map_send_success(tc_task_backlog_args_t* args, tc_thread_pool_task_priority_t priority, pint session_generation) {
     tc_session_t* session = (tc_session_t*)args->context;
+    tc_map_t* map = (tc_map_t*)args->result;
+
+    p_rwlock_reader_lock(map->lock);
+    tc_session_aquire_action_lock(session, session_generation);
+    player_position_t player_position = tc_spawn_position_to_player_position(map->spawn_position);
+    tc_protocol_send_set_player_position_and_orientation(
+        session->client_socket, 
+        -1, 
+        player_position.x, player_position.y, player_position.z, 
+        player_position.heading, player_position.pitch, 
+        FALSE
+    );
+    tc_session_release_action_lock(session);
+    p_rwlock_reader_unlock(map->lock);
+
     tc_thread_schedule_next(
         &session->server->thread_pool,
         tc_server_client_listen_task,
@@ -62,7 +78,7 @@ static void* test_attempt_join(void* this_context, tc_session_t* session, const 
     
     pboolean success = tc_api_schedule_send_map(
         session,
-        "./classic_worlds/test_lobby.cw",
+        "./classic_worlds/lobby.cw",
         NULL,
         schedule_info,
         current_priority

@@ -245,19 +245,19 @@ pboolean tc_map_load(tc_map_t *map, const pchar *path)
 
     n = nbt_expect(root, "ClassicWorld.Spawn.X", TAG_SHORT);
     if (!n) { goto fail; }
-    map->spawn_x = n->payload.tag_short;
+    map->spawn_position.block_position.x = n->payload.tag_short;
     n = nbt_expect(root, "ClassicWorld.Spawn.Y", TAG_SHORT);
     if (!n) { goto fail; }
-    map->spawn_y = n->payload.tag_short;
+    map->spawn_position.block_position.y = n->payload.tag_short;
     n = nbt_expect(root, "ClassicWorld.Spawn.Z", TAG_SHORT);
     if (!n) { goto fail; }
-    map->spawn_z = n->payload.tag_short;
+    map->spawn_position.block_position.z = n->payload.tag_short;
     n = nbt_expect(root, "ClassicWorld.Spawn.H", TAG_BYTE);
     if (!n) { goto fail; }
-    map->spawn_heading = n->payload.tag_byte;
+    map->spawn_position.heading = n->payload.tag_byte;
     n = nbt_expect(root, "ClassicWorld.Spawn.P", TAG_BYTE);
     if (!n) { goto fail; }
-    map->spawn_pitch = n->payload.tag_byte;
+    map->spawn_position.pitch = n->payload.tag_byte;
 
     n = nbt_expect(root, "ClassicWorld.BlockArray", TAG_BYTE_ARRAY);
     if (!n) { goto fail; }
@@ -268,7 +268,7 @@ pboolean tc_map_load(tc_map_t *map, const pchar *path)
     memcpy(map->block_array, n->payload.tag_byte_array.data, (size_t)map->block_array_count);
 
     //block array 2 is optional
-    n = nbt_find_by_path(root, "ClassicWorld.BlockArray2");
+    n = nbt_expect(root, "ClassicWorld.BlockArray2", TAG_BYTE_ARRAY);
     if (n) {
         map->block_array2_count = n->payload.tag_byte_array.length;
         if (map->block_array2_count * 4 < map->block_array_count) { goto fail; } //2 bits per block in block_array2
@@ -278,9 +278,8 @@ pboolean tc_map_load(tc_map_t *map, const pchar *path)
     }
 
     /* CPE: CustomBlocks */
-    nbt_node *ext = nbt_find_by_path(root, "ClassicWorld.Metadata.CPE.CustomBlocks");
+    nbt_node *ext = nbt_expect(root, "ClassicWorld.Metadata.CPE.CustomBlocks", TAG_COMPOUND);
     if (ext) {
-        if (ext->type != TAG_COMPOUND) { goto fail; }
         tc_map_custom_blocks_extension_t *cb = (tc_map_custom_blocks_extension_t *)
             p_malloc(sizeof(tc_map_custom_blocks_extension_t));
         if (!cb) { goto fail; }
@@ -302,9 +301,8 @@ pboolean tc_map_load(tc_map_t *map, const pchar *path)
     }
 
     /* CPE: EnvColors */
-    ext = nbt_find_by_path(root, "ClassicWorld.Metadata.CPE.EnvColors");
+    ext = nbt_expect(root, "ClassicWorld.Metadata.CPE.EnvColors", TAG_COMPOUND);
     if (ext) {
-        if (ext->type != TAG_COMPOUND) { goto fail; }
         tc_map_env_colors_extension_t *ec = (tc_map_env_colors_extension_t *)
             p_malloc(sizeof(tc_map_env_colors_extension_t));
         if (!ec) { goto fail; }
@@ -322,9 +320,8 @@ pboolean tc_map_load(tc_map_t *map, const pchar *path)
     }
 
     /* CPE: EnvAspect */
-    ext = nbt_find_by_path(root, "ClassicWorld.Metadata.CPE.EnvAspect");
+    ext = nbt_expect(root, "ClassicWorld.Metadata.CPE.EnvAspect", TAG_COMPOUND);
     if (ext) {
-        if (ext->type != TAG_COMPOUND) { goto fail; }
         tc_map_env_aspect_extension_t *ea = (tc_map_env_aspect_extension_t *)
             p_malloc(sizeof(tc_map_env_aspect_extension_t));
         if (!ea) { goto fail; }
@@ -372,9 +369,8 @@ pboolean tc_map_load(tc_map_t *map, const pchar *path)
     }
 
     /* CPE: EnvMapAppearance */
-    ext = nbt_find_by_path(root, "ClassicWorld.Metadata.CPE.EnvMapAppearance");
+    ext = nbt_expect(root, "ClassicWorld.Metadata.CPE.EnvMapAppearance", TAG_COMPOUND);
     if (ext) {
-        if (ext->type != TAG_COMPOUND) { goto fail; }
         tc_map_env_appearance_extension_t *ea = (tc_map_env_appearance_extension_t *)
             p_malloc(sizeof(tc_map_env_appearance_extension_t));
         if (!ea) { goto fail; }
@@ -423,9 +419,8 @@ pboolean tc_map_load(tc_map_t *map, const pchar *path)
     }
 
     /* CPE: EnvWeatherType */
-    ext = nbt_find_by_path(root, "ClassicWorld.Metadata.CPE.EnvWeatherType");
+    ext = nbt_expect(root, "ClassicWorld.Metadata.CPE.EnvWeatherType", TAG_COMPOUND);
     if (ext) {
-        if (ext->type != TAG_COMPOUND) { goto fail; }
         tc_map_env_weather_extension_t *ew = (tc_map_env_weather_extension_t *)
             p_malloc(sizeof(tc_map_env_weather_extension_t));
         if (!ew) { goto fail; }
@@ -441,9 +436,8 @@ pboolean tc_map_load(tc_map_t *map, const pchar *path)
     }
 
     /* CPE: BlockDefinitions */
-    ext = nbt_find_by_path(root, "ClassicWorld.Metadata.CPE.BlockDefinitions");
+    ext = nbt_expect(root, "ClassicWorld.Metadata.CPE.BlockDefinitions", TAG_COMPOUND);
     if (ext) {
-        if (ext->type != TAG_COMPOUND) { goto fail; }
         tc_map_block_definition_extension_t *bd = (tc_map_block_definition_extension_t *)
             p_malloc(sizeof(tc_map_block_definition_extension_t));
         if (!bd) { goto fail; }
@@ -585,11 +579,11 @@ pboolean tc_map_save(tc_map_t *map, const pchar *path)
     nbt_node *spawn = nbt_make_compound("Spawn");
     if (!spawn) { goto fail; }
     if (!nbt_put(root, spawn)) { goto fail; }
-    if (!nbt_put(spawn, nbt_make_short("X", map->spawn_x))) { goto fail; }
-    if (!nbt_put(spawn, nbt_make_short("Y", map->spawn_y))) { goto fail; }
-    if (!nbt_put(spawn, nbt_make_short("Z", map->spawn_z))) { goto fail; }
-    if (!nbt_put(spawn, nbt_make_byte("H", map->spawn_heading))) { goto fail; }
-    if (!nbt_put(spawn, nbt_make_byte("P", map->spawn_pitch))) { goto fail; }
+    if (!nbt_put(spawn, nbt_make_short("X", map->spawn_position.block_position.x))) { goto fail; }
+    if (!nbt_put(spawn, nbt_make_short("Y", map->spawn_position.block_position.y))) { goto fail; }
+    if (!nbt_put(spawn, nbt_make_short("Z", map->spawn_position.block_position.z))) { goto fail; }
+    if (!nbt_put(spawn, nbt_make_byte("H", map->spawn_position.heading))) { goto fail; }
+    if (!nbt_put(spawn, nbt_make_byte("P", map->spawn_position.pitch))) { goto fail; }
 
     if (!nbt_put(root, nbt_make_byte_array("BlockArray", map->block_array, map->block_array_count))) { goto fail; }
 

@@ -5,6 +5,7 @@
 #include <stddef.h>
 #include <string.h>
 #include <TeleClassic26/utils.h>
+#include <TeleClassic26/gameplay/positions.h>
 
 // Infrastructure for a map/world
 typedef enum tc_map_generation_mode {
@@ -122,12 +123,7 @@ typedef struct tc_map {
     pint16 y_size;
     pint16 z_size;
 
-    pint16 spawn_x;
-    pint16 spawn_y;
-    pint16 spawn_z;
-
-    pchar spawn_heading;
-    pchar spawn_pitch;
+    spawn_position_t spawn_position;
 
     pchar format_version; 
 

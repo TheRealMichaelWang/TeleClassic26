@@ -196,7 +196,7 @@ static void tc_send_map_task2(void* arg, tc_thread_pool_task_priority_t priority
     }
 
     if (send_map_data->map->env_aspect_extension) {
-        if (tc_session_get_extension_version(send_map_data->session, TC_CPE_ENV_MAP_APPEARANCE_EXTENSION_INDEX) <= 0) {
+        if (tc_session_get_extension_version(send_map_data->session, TC_CPE_ENV_MAP_ASPECT_EXTENSION_INDEX) <= 0) {
             TC_LOG_SESSION(log_error, send_map_data->session, "Failed to send map (name %s): EnvMapAppearance extension is not supported but required.", send_map_data->map->name);
             handle_failure(send_map_data, session_generation, TRUE);
             return;
@@ -388,6 +388,15 @@ static void tc_send_map_task2(void* arg, tc_thread_pool_task_priority_t priority
             send_map_data->map->env_colors_extension->sunlight.green, 
             send_map_data->map->env_colors_extension->sunlight.blue
         ), "Could not send set map env packet for sunlight color.");
+    }
+
+    if (send_map_data->map->block_definition_extensions) {
+        if (tc_session_get_extension_version(send_map_data->session, TC_CPE_BLOCK_DEFINITIONS_EXTENSION_INDEX) <= 0) {
+            TC_LOG_SESSION(log_error, send_map_data->session, "Failed to send map (name %s): BlockDefinitions extension is not supported but required.", send_map_data->map->name);
+            handle_failure(send_map_data, session_generation, TRUE);
+            return;
+        }
+        
     }
 
     tc_send_buffer_task_data_t* send_buffer_task_data = p_malloc0(sizeof(tc_send_buffer_task_data_t));
